@@ -65,3 +65,88 @@ jobs:
           PG_DSN: "postgresql+asyncpg://ord:password@localhost:5432/test"
           PG_ALEMBIC_DSN: "postgresql+psycopg://ord:password@localhost:5432/test"
           PG_TEST_DSN: "postgresql+psycopg://ord:password@localhost:5432/test"
+
+  test_e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - uses: ikalnytskyi/action-setup-postgres@v7
+        with:
+          username: ord
+          password: password
+          database: test
+          port: 5432
+          postgres-version: "17"
+          ssl: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: uv sync --frozen
+
+      - name: Run alembic migrations
+        run: uv run alembic upgrade head
+        env:
+          PG_DSN: "postgresql+psycopg://ord:password@localhost:5432/test"
+          PG_ALEMBIC_DSN: "postgresql+psycopg://ord:password@localhost:5432/test"
+          PG_TEST_DSN: "postgresql+psycopg://ord:password@localhost:5432/test"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+
+      # The UI is served via the dev server (vite dev), not a production build: the no-auth
+      # bypass is hard-gated off in production builds (import.meta.env.PROD), so e2e must use
+      # dev mode. Backend + UI + Playwright all run in one step because background processes
+      # started in earlier steps do not survive into later ones on GitHub runners.
+      - name: Start servers and run E2E
+        run: |
+          set -e
+          nohup uv run uvicorn ord_app.service_api.main:app --host 127.0.0.1 --port 8000 > /tmp/backend.log 2>&1 &
+          nohup npm --prefix ui run dev -- --host 127.0.0.1 --port 5173 > /tmp/ui.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8000/service_api/docs > /dev/null && break || sleep 2
+          done
+          curl -sf http://127.0.0.1:8000/service_api/docs > /dev/null || { echo "backend failed"; cat /tmp/backend.log; exit 1; }
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:5173 > /dev/null && break || sleep 2
+          done
+          curl -sf http://127.0.0.1:5173 > /dev/null || { echo "ui failed"; cat /tmp/ui.log; exit 1; }
+          npm --prefix ui run test:e2e
+        env:
+          APP_ENV: localhost
+          ORD_APP_E2E: "true"
+          CORS_ORIGINS: '["http://127.0.0.1:5173"]'
+          VITE_E2E_NO_AUTH: "TRUE"
+          VITE_API_ENDPOINT: "http://127.0.0.1:8000/service_api/api/v1"
+          PG_DSN: "postgresql+asyncpg://ord:password@localhost:5432/test"
+          PG_ALEMBIC_DSN: "postgresql+psycopg://ord:password@localhost:5432/test"
+          PG_TEST_DSN: "postgresql+psycopg://ord:password@localhost:5432/test"
+
+      - name: Server logs (on failure)
+        if: failure()
+        run: cat /tmp/backend.log /tmp/ui.log || true
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            ui/playwright-report/
+            ui/test-results/
+          retention-days: 7
