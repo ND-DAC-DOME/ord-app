@@ -48,4 +48,37 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - run: npm run test
+      - run: npm run test:coverage
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            {
+              echo "### UI test coverage"
+              echo ""
+              jq -r '.total | "| Metric | % | Covered / Total |\n|---|---:|---:|\n| Lines | \(.lines.pct)% | \(.lines.covered) / \(.lines.total) |\n| Statements | \(.statements.pct)% | \(.statements.covered) / \(.statements.total) |\n| Functions | \(.functions.pct)% | \(.functions.covered) / \(.functions.total) |\n| Branches | \(.branches.pct)% | \(.branches.covered) / \(.branches.total) |"' coverage/coverage-summary.json
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Codecov merges this lcov upload (ui flag) with the Python coverage.xml
+      # (python flag) into one PR comment with project (total) + patch (delta) coverage.
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
+        with:
+          files: ui/coverage/lcov.info
+          flags: ui
+          # CODECOV_TOKEN is an org-wide token, so the repo slug must be explicit.
+          slug: open-reaction-database/ord-app
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # Strict on push + same-repo PRs; tolerate fork/dependabot (tokenless). Mirrors ord-schema.
+          fail_ci_if_error: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && !startsWith(github.head_ref, 'dependabot/')) }}
+
+      - name: Upload UI coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ui-coverage
+          path: ui/coverage/
+          retention-days: 7
