@@ -11,15 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
+import time
+
 import pytest
 from alembic import command
 from alembic.config import Config
 from faker import Faker
 from fastapi.testclient import TestClient
 from ord_schema.proto.reaction_pb2 import Reaction
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, make_url, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy_utils import create_database, database_exists, drop_database
 
 from ord_app.service_api.main import app
@@ -55,8 +58,66 @@ def read_testdata_bytes(filename: str) -> bytes:
         return fd.read()
 
 
-pg_engine = create_async_engine(RuntimeSettings.pg_test_dsn)
+def _worker_test_dsn() -> str:
+    """Return a per-xdist-worker test database URL so parallel workers don't share state.
+
+    pytest-xdist runs each worker in its own process. The autouse ``clear_database`` fixture
+    TRUNCATEs every table before each test, so without isolation concurrent workers would wipe
+    each other's data mid-test. Suffix the database name with the worker id (``gw0``, ``gw1``,
+    …); a plain (non-``-n``) ``pytest`` run has no worker id and uses the base DSN unchanged.
+
+    Returns:
+        The ``pg_test_dsn`` with the database name suffixed by ``PYTEST_XDIST_WORKER`` when set.
+    """
+    url = make_url(RuntimeSettings.pg_test_dsn)
+    if url.database is None:
+        raise RuntimeError(f"pg_test_dsn must name a database: {RuntimeSettings.pg_test_dsn!r}")
+    worker = os.getenv("PYTEST_XDIST_WORKER")
+    if worker:
+        url = url.set(database=f"{url.database}_{worker}")
+    # hide_password=False keeps the credential that str(url) would mask as "***".
+    return url.render_as_string(hide_password=False)
+
+
+def _recreate_test_database(dsn: str, attempts: int = 5, delay: float = 0.5) -> None:
+    """Create a fresh database for ``dsn``, dropping any leftover one first.
+
+    Dropping a database left behind by a crashed run avoids a stale/partial schema failing the
+    migration below. Concurrent xdist workers each issue ``CREATE DATABASE`` (which clones
+    ``template1``); Postgres rejects the clone while another worker is using ``template1``
+    (SQLSTATE 55006, raised as ``OperationalError``), so retry a few times.
+
+    Args:
+        dsn: Target database URL to (re)create.
+        attempts: Maximum create attempts before giving up.
+        delay: Seconds to wait between attempts.
+
+    Raises:
+        OperationalError: If every attempt fails (re-raised from the last attempt).
+    """
+    for attempt in range(attempts):
+        try:
+            if database_exists(dsn):
+                drop_database(dsn)
+            create_database(dsn)
+            return
+        except OperationalError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+
+
+TEST_DSN = _worker_test_dsn()
+
+pg_engine = create_async_engine(TEST_DSN)
 db_session_maker = async_sessionmaker(pg_engine, expire_on_commit=False, autocommit=False, autoflush=False)
+
+# Reused across every clear_database call instead of building a new engine per test.
+sync_engine = create_engine(TEST_DSN)
+# Single statement clears every table once per test; CASCADE handles FK order.
+_truncate_all_tables = text(
+    "TRUNCATE TABLE " + ", ".join(f'"{table.name}"' for table in BaseModel.metadata.sorted_tables) + " CASCADE"
+)
 
 
 async def _test_db_session():
@@ -97,32 +158,25 @@ def api_client():
 
 @pytest.fixture(scope="session", autouse=True)
 def create_test_database():
-    engine = create_engine(RuntimeSettings.pg_test_dsn)
-    if not database_exists(engine.url):
-        create_database(engine.url)
-    engine.dispose()
+    _recreate_test_database(TEST_DSN)
 
     alembic_cfg = Config(str(RuntimeSettings.base_dir.parent.parent / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(RuntimeSettings.base_dir.parent.parent / "migrations"))
-    alembic_cfg.set_main_option("sqlalchemy.url", RuntimeSettings.pg_test_dsn)
+    alembic_cfg.set_main_option("sqlalchemy.url", TEST_DSN)
     command.upgrade(alembic_cfg, "head")
 
     yield
 
-    drop_database(RuntimeSettings.pg_test_dsn)
+    # drop_database() runs pg_terminate_backend on every other connection to this database
+    # (both sync_engine's pool and the async pg_engine's pool) before issuing DROP, so neither
+    # engine needs explicit disposal here.
+    drop_database(TEST_DSN)
 
 
 @pytest.fixture(autouse=True)
 def clear_database():
-    engine = create_engine(RuntimeSettings.pg_test_dsn)
-    db_session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-    with db_session() as session:
-        for table in reversed(BaseModel.metadata.sorted_tables):
-            session.execute(text(f'TRUNCATE TABLE "{table.name}" CASCADE;'))
-        session.commit()
-
-    engine.dispose()
+    with sync_engine.begin() as conn:
+        conn.execute(_truncate_all_tables)
 
     yield
 
