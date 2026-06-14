@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { configureStore, type UnknownAction } from '@reduxjs/toolkit';
-import { rootReducer } from 'store/rootReducer.ts';
+import { type UnknownAction } from '@reduxjs/toolkit';
 import axiosInstance from 'store/axiosInstance.ts';
+import { makeRecordingStore } from 'test/recordingStore.ts';
 import { navigate } from 'wouter/use-browser-location';
 import { createEmptyReaction, getReactionsList, getReactionsPage, removeReaction } from './reactions.thunks.ts';
 import {
@@ -25,6 +25,7 @@ import {
   getReactionsListActions,
   removeReactionActions,
 } from './reactions.actions.ts';
+import { getDatasetActions } from '../datasets/datasets.actions.ts';
 
 vi.mock('store/axiosInstance.ts', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
@@ -48,15 +49,7 @@ vi.mock('./reactions.converters.ts', async importActual => ({
 const axiosMock = axiosInstance as unknown as Record<'get' | 'post' | 'patch' | 'delete', ReturnType<typeof vi.fn>>;
 const emptyPage = { items: [], page: 1, size: 10, total: 0, pages: 0 };
 
-function makeStore() {
-  const actions: Array<UnknownAction> = [];
-  const recorder = () => (next: (action: unknown) => unknown) => (action: unknown) => {
-    actions.push(action as UnknownAction);
-    return next(action);
-  };
-  const store = configureStore({ reducer: rootReducer, middleware: getDefault => getDefault().concat(recorder) });
-  return { store, types: () => actions.map(action => action.type) };
-}
+const makeStore = makeRecordingStore;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -106,8 +99,11 @@ describe('removeReaction', () => {
     expect(axiosMock.delete).toHaveBeenCalledWith('/datasets/5/reactions/42');
     expect(types()).toContain(removeReactionActions.success.type);
     expect(navigate).toHaveBeenCalledWith('/datasets/5');
-    // Characterization: removal updates the store optimistically (reducer prunes order + total) and
-    // does NOT trigger a list refetch — no getReactionPage/List request follows the success.
+    // Refetches the parent dataset so its "Last modified" / reaction counts refresh
+    // even when already on the dataset page (navigate is a no-op there). (#431)
+    expect(types()).toContain(getDatasetActions.request.type);
+    // Removal still updates the reactions store optimistically (reducer prunes order + total) and
+    // does NOT trigger a reactions-list refetch — no getReactionPage request follows the success.
     expect(types()).not.toContain(getReactionPageActions.request.type);
   });
 });
