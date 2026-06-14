@@ -102,9 +102,39 @@ describe('removeReaction', () => {
     // Refetches the parent dataset so its "Last modified" / reaction counts refresh
     // even when already on the dataset page (navigate is a no-op there). (#431)
     expect(types()).toContain(getDatasetActions.request.type);
-    // Removal still updates the reactions store optimistically (reducer prunes order + total) and
-    // does NOT trigger a reactions-list refetch — no getReactionPage request follows the success.
+    // In the common case (not the last reaction on an out-of-range page) removal just prunes the
+    // store optimistically and does NOT refetch the list — no getReactionPage request. (#586 covers
+    // the edge case where a refetch IS needed; see the next test.)
     expect(types()).not.toContain(getReactionPageActions.request.type);
+  });
+
+  it('refetches the clamped page (1) when the last reaction on the last page is removed (#586)', async () => {
+    const { store, actions } = makeStore();
+    // On page 2 of 2, with a single reaction (#42) loaded on that page.
+    store.dispatch(getReactionsListActions.request(5)); // sets the active dataset id
+    store.dispatch(getReactionPageActions.request({ page: 2, size: 10 }));
+    store.dispatch(
+      getReactionPageActions.success({
+        items: [{ id: 42, data: {} }],
+        page: 2,
+        size: 10,
+        total: 11,
+        pages: 2,
+      } as unknown as Parameters<typeof getReactionPageActions.success>[0]),
+    );
+    const before = actions().length;
+
+    await store.dispatch(removeReaction(42) as unknown as UnknownAction);
+
+    // Page 2 is now past the new last page (1), so the thunk refetches the clamped page —
+    // assert it requests page 1 specifically, not just that some page request fired.
+    const refetch = actions()
+      .slice(before)
+      .find(action => action.type === getReactionPageActions.request.type) as
+      | { payload?: { page?: number } }
+      | undefined;
+    expect(refetch).toBeDefined();
+    expect(refetch?.payload?.page).toBe(1);
   });
 });
 
