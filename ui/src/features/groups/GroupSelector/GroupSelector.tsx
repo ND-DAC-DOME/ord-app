@@ -17,6 +17,7 @@ import { Select, type SelectProps } from '@mantine/core';
 import { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { selectAdminGroupsList } from 'store/entities/groups/groups.selectors.ts';
+import classes from './groupSelector.module.scss';
 
 type GroupSelectorProps = Omit<SelectProps, 'data'>;
 
@@ -32,6 +33,7 @@ export function GroupSelector({ ...rest }: Readonly<GroupSelectorProps>) {
       placeholder="Select a group"
       searchable
       {...rest}
+      classNames={{ option: classes.option, ...rest.classNames }}
     />
   );
 }
