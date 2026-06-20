@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Sequence
+
+from fastapi_pagination import Page
 from fastapi_pagination.ext.sqlalchemy import paginate
 from loguru import logger
 from sqlalchemy import and_, delete, func, select, update
@@ -37,10 +40,10 @@ SELECT_STMT = (
 
 
 class DatasetsRepository:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def update_modified_at(self, dataset_id: int):
+    async def update_modified_at(self, dataset_id: int) -> DatasetModel | None:
         stmt = (
             update(DatasetModel)
             .where(DatasetModel.id == dataset_id)
@@ -51,7 +54,7 @@ class DatasetsRepository:
         await self.db.commit()
         return dataset
 
-    async def create(self, group_id: int, owner_id: int, payload: dict, autocommit=True) -> DatasetModel:
+    async def create(self, group_id: int, owner_id: int, payload: dict, autocommit: bool = True) -> DatasetModel:
         dataset = DatasetModel(owner_id=owner_id, **payload)
         dataset_group_association = DatasetGroupAssociationModel(dataset=dataset, group_id=group_id)
         self.db.add_all([dataset, dataset_group_association])
@@ -75,7 +78,7 @@ class DatasetsRepository:
         )
         return await self.db.scalar(stmt)
 
-    async def get_with_sharable_info(self, dataset_id: int, user_id: int):
+    async def get_with_sharable_info(self, dataset_id: int, user_id: int) -> DatasetModel:
         stmt = (
             select(*SELECT_STMT)
             .outerjoin(DatasetModel.reactions)
@@ -129,7 +132,7 @@ class DatasetsRepository:
         stmt = select(DatasetModel).where(DatasetModel.id == dataset_id).options(selectinload(DatasetModel.reactions))
         return await self.db.scalar(stmt)
 
-    async def enrich_datasets_with_user_roles(self, datasets, user_id):
+    async def enrich_datasets_with_user_roles(self, datasets: Sequence[DatasetModel], user_id: int) -> None:
         # Collect all group IDs from the paginated datasets
         group_ids = {group.id for dataset in datasets for group in dataset.groups}
 
@@ -148,7 +151,7 @@ class DatasetsRepository:
             # filter out groups that the user is not a member of
             dataset.groups = [group for group in dataset.groups if group.role is not None]
 
-    async def datasets_stmt(self, user_id: int, group_id: int | None = None):
+    async def datasets_stmt(self, user_id: int, group_id: int | None = None) -> Page[DatasetModel]:
         filters = [DatasetModel.groups.any(GroupModel.members.any(UserModel.id == user_id))]
 
         if group_id is not None:
@@ -167,7 +170,7 @@ class DatasetsRepository:
 
         return paginated_datasets
 
-    async def update(self, dataset_id: int, payload: dict, autocommit: bool = True):
+    async def update(self, dataset_id: int, payload: dict, autocommit: bool = True) -> None:
         stmt = update(DatasetModel).where(DatasetModel.id == dataset_id).values(**payload)
 
         if autocommit:
@@ -175,13 +178,15 @@ class DatasetsRepository:
             await self.db.commit()
             logger.debug(f"{dataset_id} updated with payload: {payload}")
 
-    async def delete(self, dataset_id: int):
+    async def delete(self, dataset_id: int) -> None:
         stmt = delete(DatasetModel).where(DatasetModel.id == dataset_id)
         await self.db.execute(stmt)
         await self.db.commit()
         logger.debug(f"<Dataset(id={dataset_id})> deleted")
 
-    async def get_dataset_group_association(self, group_id, dataset_id: int):
+    async def get_dataset_group_association(
+        self, group_id: int, dataset_id: int
+    ) -> DatasetGroupAssociationModel | None:
         dataset_group_association_stmt = select(DatasetGroupAssociationModel).where(
             DatasetGroupAssociationModel.group_id == group_id,
             DatasetGroupAssociationModel.dataset_id == dataset_id,
@@ -189,7 +194,7 @@ class DatasetsRepository:
         )
         return await self.db.scalar(dataset_group_association_stmt)
 
-    async def share_dataset(self, primary_dataset_id: int, secondary_group_id: int):
+    async def share_dataset(self, primary_dataset_id: int, secondary_group_id: int) -> DatasetGroupAssociationModel:
         dataset_group_association = DatasetGroupAssociationModel(
             dataset_id=primary_dataset_id, group_id=secondary_group_id, is_primary=False
         )
@@ -198,7 +203,7 @@ class DatasetsRepository:
         await self.db.refresh(dataset_group_association)
         return dataset_group_association
 
-    async def unshare_dataset(self, primary_dataset_id: int, secondary_group_id: int):
+    async def unshare_dataset(self, primary_dataset_id: int, secondary_group_id: int) -> None:
         stmt = delete(DatasetGroupAssociationModel).where(
             DatasetGroupAssociationModel.dataset_id == primary_dataset_id,
             DatasetGroupAssociationModel.group_id == secondary_group_id,
