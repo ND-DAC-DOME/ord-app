@@ -142,6 +142,10 @@ export interface BaseReaction {
   data: AppReaction;
   previews: PreviewsById;
   summary: ReactionSummary;
+  // Snapshot of `data` taken before an optimistic field edit, used to roll the edit back if the
+  // backend rejects it (e.g. the user's role was changed to viewer, or the backend is down).
+  // Transient: present only while an edit is in flight, cleared on success or rollback. (#615)
+  dataBeforeEdit?: AppReaction;
 }
 
 export interface DatasetReaction extends BaseReaction {
@@ -161,7 +165,8 @@ export type ReactionOrTemplate = DatasetReaction | ReactionTemplate;
 
 export type ReactionId = number | string;
 
-export type UpdateReactionSuccessPayload = Omit<DatasetReaction, 'data'>;
+// The server response never includes the client-only `dataBeforeEdit` snapshot. (#615)
+export type UpdateReactionSuccessPayload = Omit<DatasetReaction, 'data' | 'dataBeforeEdit'>;
 
 export interface ImportReactionFromFilePayload {
   file: File;
