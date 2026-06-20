@@ -31,18 +31,58 @@ import { ord } from 'ord-schema-protobufjs';
 import { reactionToOrdReaction } from 'store/entities/reactions/reactions.converters.ts';
 import { ordBooleanToReaction } from 'store/entities/reactions/reactionEntity/reactionEntity.converters.ts';
 import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat.js';
 import { DATE_FORMAT, DATE_TIME_FORMAT } from 'common/constants.ts';
+
+// customParseFormat gives dayjs strict parsing against an explicit format list. Without it dayjs
+// falls back to the lenient native Date parser, which silently coerces garbage like "Aprillllll,
+// 2025" into April 1 — see issue #544. Strict mode rejects anything that doesn't match a format.
+dayjs.extend(customParseFormat);
+
+// ISO-8601-shaped input (the app's own output plus tz-aware inputs): a YYYY-MM-DD date with an
+// optional time and an optional Z/±HHMM offset. The 'Z'/offset token isn't honored by
+// customParseFormat's strict mode, so ISO is gated by this (deliberately simple) regex and parsed
+// with dayjs's default ISO parser; non-ISO human formats go through the strict list below.
+const ISO_8601 = /^\d{4}-\d{2}-\d{2}([T ][\d:.]+(Z|[+-]\d\d:?\d\d)?)?$/;
+
+// Non-ISO date formats accepted for enumeration CSV cells: common human-authored formats (US slash,
+// European dot, and named-month). Extend this list if a legitimate CSV format is rejected.
+const ACCEPTED_DATE_FORMATS = [
+  'YYYY/MM/DD',
+  'MM/DD/YYYY',
+  'M/D/YYYY',
+  'DD.MM.YYYY',
+  'D.M.YYYY',
+  'MMMM D, YYYY',
+  'MMMM D YYYY',
+  'MMM D, YYYY',
+  'MMM D YYYY',
+  'D MMMM YYYY',
+  'D MMM YYYY',
+];
 
 const produceValueTypeError = (type: string, variable: Variable) =>
   new Error(`Expected ${type} value for variable ${variable.name}`);
 
 type ValueType = string | number | boolean;
 
+// dayjs's ISO parser silently rolls out-of-range month/day (e.g. 2025-13-45 → 2026-02-14), so bound
+// them numerically. Kept in code rather than the regex to keep the pattern's complexity low.
+function isInRangeIsoDate(value: string): boolean {
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31;
+}
+
 function getDateOrError(value: ValueType, variable: Variable): string {
   if (typeof value !== 'string') {
     throw produceValueTypeError('date', variable);
   }
-  const date = dayjs(value);
+  const isIso = ISO_8601.test(value);
+  if (isIso && !isInRangeIsoDate(value)) {
+    throw produceValueTypeError('date', variable);
+  }
+  const date = isIso ? dayjs(value) : dayjs(value, ACCEPTED_DATE_FORMATS, true);
   if (!date.isValid()) {
     throw produceValueTypeError('date', variable);
   }
