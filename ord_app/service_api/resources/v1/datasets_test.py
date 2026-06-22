@@ -38,6 +38,10 @@ from ord_app.service_api.models import (
     UserModel,
 )
 from ord_app.service_api.schemas.base import MAX_CRITICAL_FIELD_LENGTH, MAX_FIELD_LENGTH
+from ord_app.service_api.services.pb_utils import (
+    load_dataset_message,
+    write_dataset_message,
+)
 
 fake = Faker()
 # Both names are used across the test functions merged into this file; alias rather than
@@ -705,3 +709,89 @@ async def test_viewer_update_dataset(
     payload = {"name": "updated name", "description": "updated description"}
     response = api_client.patch(f"/api/v1/datasets/{dataset.id}", json=payload)
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+def _parquet_dataset_bytes(name: str, num_reactions: int = 2) -> bytes:
+    """Serialize a small valid dataset to Parquet (requires name/description/reactions)."""
+    dataset = Dataset(name=name, description="A Parquet dataset")
+    dataset.reactions.extend(
+        Reaction(reaction_id=faker.uuid4()) for _ in range(num_reactions)
+    )
+    return write_dataset_message(dataset, "parquet")
+
+
+async def test_upload_parquet_dataset(api_client, mock_authenticated_user):
+    user, _, group = mock_authenticated_user
+
+    response_data = (
+        api_client.post(
+            f"/api/v1/groups/{group.id}/datasets/upload",
+            files={"file": ("screen.parquet", _parquet_dataset_bytes("screen"))},
+        )
+        .raise_for_status()
+        .json()
+    )
+    assert response_data["name"] == "screen"
+    assert response_data["owner"]["id"] == user.id
+
+
+async def test_upload_malformed_parquet(api_client, mock_authenticated_user):
+    *_, group = mock_authenticated_user
+
+    response_data = api_client.post(
+        f"/api/v1/groups/{group.id}/datasets/upload",
+        files={"file": ("broken.parquet", BytesIO(b"not really parquet"))},
+    )
+    assert response_data.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def _add_reaction(test_db_session, user, dataset):
+    reaction_id = faker.uuid4()
+    test_db_session.add(
+        ReactionModel(
+            owner=user,
+            pb_reaction_id=reaction_id,
+            dataset=dataset,
+            binpb=Reaction(reaction_id=reaction_id).SerializeToString(),
+        )
+    )
+    await test_db_session.commit()
+    return reaction_id
+
+
+async def test_download_dataset_as_parquet_round_trips(
+    api_client, mock_authenticated_user, test_db_session
+):
+    user, *_ = mock_authenticated_user
+    dataset = await create_test_dataset(test_db_session, mock_authenticated_user)
+    dataset.description = "A downloadable dataset"
+    reaction_id = await _add_reaction(test_db_session, user, dataset)
+
+    response = api_client.get(
+        f"/api/v1/datasets/{dataset.id}/download?file_format=parquet"
+    ).raise_for_status()
+    assert response.headers["content-disposition"].endswith('.parquet"')
+
+    # The downloaded bytes round-trip back into a Dataset with the same reaction.
+    loaded = load_dataset_message(response.content, "parquet")
+    assert loaded.name == dataset.name
+    assert loaded.description == dataset.description
+    assert [r.reaction_id for r in loaded.reactions] == [reaction_id]
+
+
+@pytest.mark.parametrize("description", (None, "", "   "))
+async def test_download_parquet_requires_description(
+    description, api_client, mock_authenticated_user, test_db_session
+):
+    # A missing, empty, or whitespace-only description must reject Parquet export with a clear 422.
+    user, *_ = mock_authenticated_user
+    dataset = await create_test_dataset(test_db_session, mock_authenticated_user)
+    if description is not None:
+        dataset.description = description
+    await _add_reaction(test_db_session, user, dataset)
+
+    response = api_client.get(
+        f"/api/v1/datasets/{dataset.id}/download?file_format=parquet"
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "description" in response.json()["detail"]
