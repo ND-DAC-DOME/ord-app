@@ -45,7 +45,7 @@
     "csv-parse": "^5.6.0",
     "dayjs": "^1.11.13",
     "html-to-image": "^1.11.13",
-    "ketcher-react": "^3.8.0",
+    "ketcher-react": "^3.17.1",
     "ketcher-standalone": "^3.8.0",
     "mantine-react-table": "^2.0.0-beta.8",
     "mime": "^4.0.6",
