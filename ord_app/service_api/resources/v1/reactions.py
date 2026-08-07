@@ -18,6 +18,7 @@ from fastapi_pagination import Page
 
 from ord_app.service_api.domain.auth import dataset_authorization
 from ord_app.service_api.domain.reactions import ReactionsUseCase, get_reaction_use_case
+from ord_app.service_api.models import ReactionModel
 from ord_app.service_api.schemas.datasets import DownloadFileFormats
 from ord_app.service_api.schemas.reactions import (
     ReactionCreateSchema,
@@ -39,19 +40,21 @@ async def create_reaction(
     dataset_id: int,
     payload: ReactionCreateSchema,
     use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
-):
+) -> ReactionModel:
     return await use_case.create(dataset_id, payload)
+
 
 @router.post(
     "/from-scratch",
     dependencies=[Depends(dataset_authorization(("admin", "editor")))],
-    response_model=ReactionResponseSchema
+    response_model=ReactionResponseSchema,
 )
 async def create_reaction_from_scratch(
     dataset_id: int,
-    use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)]
-):
+    use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
+) -> ReactionModel:
     return await use_case.create_from_scratch(dataset_id)
+
 
 @router.post(
     "/upload",
@@ -62,9 +65,9 @@ async def upload_reaction(
     dataset_id: int,
     file: UploadFile,
     use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
-):
+) -> ReactionModel:
     file_data, kind = await validate_uploaded_pb_file(file)
-    response =  await use_case.upload(dataset_id, file_data, kind)
+    response = await use_case.upload(dataset_id, file_data, kind)
     return response
 
 
@@ -77,7 +80,7 @@ async def reactions(
     dataset_id: int,
     use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
     is_valid: Annotated[ReactionsQueryParams, Query()],
-):
+) -> Page[ReactionModel]:
     return await use_case.paginate(dataset_id, is_valid)
 
 
@@ -90,7 +93,7 @@ async def search_reaction(
     dataset_id: int,
     pb_reaction_id: str,
     use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
-):
+) -> ReactionModel:
     return await use_case.search(dataset_id=dataset_id, pb_reaction_id=pb_reaction_id)
 
 
@@ -103,7 +106,7 @@ async def reaction(
     dataset_id: int,
     reaction_id: int,
     use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
-):
+) -> ReactionModel:
     return await use_case.get(dataset_id, reaction_id)
 
 
@@ -117,7 +120,7 @@ async def update_reaction(
     reaction_id: int,
     payload: ReactionUpdateSchema,
     use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
-):
+) -> ReactionModel:
     return await use_case.update(dataset_id, reaction_id, payload)
 
 
@@ -130,12 +133,13 @@ async def delete_reaction(
     dataset_id: int,
     reaction_id: int,
     use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
-):
+) -> None:
     return await use_case.delete(dataset_id, reaction_id)
 
 
 @router.get(
     "/{reaction_id}/download",
+    response_model=None,
     dependencies=[Depends(dataset_authorization(("admin", "editor", "viewer")))],
 )
 async def download_reaction(
@@ -143,7 +147,7 @@ async def download_reaction(
     reaction_id: int,
     file_format: DownloadFileFormats,
     use_case: Annotated[ReactionsUseCase, Depends(get_reaction_use_case)],
-):
+) -> Response:
     reaction, data = await use_case.download(dataset_id, reaction_id, file_format)
     filename = f"{reaction.pb_reaction_id}.{file_format}"
     return Response(

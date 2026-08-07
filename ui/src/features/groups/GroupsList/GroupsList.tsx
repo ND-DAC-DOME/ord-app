@@ -15,16 +15,26 @@
  */
 import { useEffect, useCallback, type ChangeEvent, type MouseEvent } from 'react';
 import { useSelector } from 'react-redux';
-import { ActionIcon, Flex, Input, ScrollArea } from '@mantine/core';
+import { ActionIcon, Flex, Input, ScrollArea, Tooltip } from '@mantine/core';
 import {
   selectGroupSearch,
   selectHaveAnyGroups,
   selectOrderedGroupsList,
 } from 'store/entities/groups/groups.selectors.ts';
-import { EmptyIcon, GridViewIcon, GroupArrowIcon, SearchIcon, SettingsIcon } from 'common/icons';
+import {
+  EmptyIcon,
+  GridViewIcon,
+  GroupArrowIcon,
+  SearchIcon,
+  SettingsIcon,
+} from 'common/icons';
+import clsx from 'clsx';
 import { setGroupSearchAction } from 'store/entities/groups/groups.actions.ts';
 import { useAppDispatch } from 'store/useAppDispatch.ts';
-import { setActiveGroupIdAction, setEditingGroupIdAction } from 'store/features/groups/groups.actions.ts';
+import {
+  setActiveGroupIdAction,
+  setEditingGroupIdAction,
+} from 'store/features/groups/groups.actions.ts';
 import classes from './GroupsList.module.scss';
 import { selectActiveGroupId } from 'store/features/groups/groups.selectors.ts';
 import { SelectableButton } from 'common/components/SelectableButton/SelectableButton.tsx';
@@ -65,7 +75,8 @@ export function GroupsList() {
     };
   }, [appDispatch]);
 
-  const scrollAreaHeight = groups.length > 4 ? GROUP_BUTTON_HEIGHT * 4 : GROUP_BUTTON_HEIGHT * groups.length;
+  const scrollAreaHeight =
+    groups.length > 4 ? GROUP_BUTTON_HEIGHT * 4 : GROUP_BUTTON_HEIGHT * groups.length;
 
   return haveAnyGroups ? (
     <>
@@ -98,24 +109,36 @@ export function GroupsList() {
           type="auto"
         >
           {groups.map(group => (
-            <SelectableButton
+            <div
               key={group.id}
-              isSelected={selectedGroupId === group.id}
-              onClick={() => selectGroup(group.id)}
+              className={clsx(
+                classes.groupRow,
+                selectedGroupId === group.id && classes.selectedRow,
+              )}
             >
-              <div className={classes.buttonName}>
-                <GroupArrowIcon />
-                <div title={group.name}>{group.name}</div>
-              </div>
+              <SelectableButton
+                isSelected={selectedGroupId === group.id}
+                onClick={() => selectGroup(group.id)}
+              >
+                <div className={classes.buttonName}>
+                  <GroupArrowIcon />
+                  <Tooltip label={group.name}>
+                    <div>{group.name}</div>
+                  </Tooltip>
+                </div>
+              </SelectableButton>
 
+              {/* Sibling of the button, not a child: a <button> cannot nest inside the
+                  SelectableButton's <button> without a hydration error. */}
               <ActionIcon
+                className={classes.editIcon}
                 onClick={e => openGroupInformation(e, group.id)}
                 variant="transparent"
                 title="Edit group"
               >
                 <SettingsIcon />
               </ActionIcon>
-            </SelectableButton>
+            </div>
           ))}
         </ScrollArea>
       </Flex>

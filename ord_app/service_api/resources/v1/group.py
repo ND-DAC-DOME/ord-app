@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from collections.abc import Sequence
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
@@ -22,11 +23,11 @@ from ord_app.service_api.domain.groups import (
     get_group_members_use_case,
     get_group_use_case,
 )
+from ord_app.service_api.models import UserGroupsMembershipModel
 from ord_app.service_api.schemas.groups import (
     GroupAddMemberSchema,
     GroupCreateSchema,
     GroupMemberResponseSchema,
-    GroupResponseSchema,
     GroupUpdateMemberSchema,
     GroupUserResponseSchema,
 )
@@ -34,35 +35,46 @@ from ord_app.service_api.schemas.groups import (
 router = APIRouter(tags=["group"], prefix="/groups")
 
 
-@router.post("", response_model=GroupResponseSchema, status_code=status.HTTP_201_CREATED)
-async def create_group(payload: GroupCreateSchema, use_case: Annotated[GroupUseCases, Depends(get_group_use_case)]):
+@router.post(
+    "", response_model=GroupUserResponseSchema, status_code=status.HTTP_201_CREATED
+)
+async def create_group(
+    payload: GroupCreateSchema,
+    use_case: Annotated[GroupUseCases, Depends(get_group_use_case)],
+) -> dict:
     return await use_case.create(payload)
 
 
 @router.get("", response_model=list[GroupUserResponseSchema])
-async def list_current_user_groups(use_case: Annotated[GroupUseCases, Depends(get_group_use_case)]):
+async def list_current_user_groups(
+    use_case: Annotated[GroupUseCases, Depends(get_group_use_case)],
+) -> list[dict]:
     response = await use_case.user_groups()
     return response
 
 
 @router.get(
     "/{group_id}",
-    response_model=GroupResponseSchema,
+    response_model=GroupUserResponseSchema,
     dependencies=[Depends(group_authorization(("admin", "editor", "viewer")))],
 )
-async def get_group(group_id: int, use_case: Annotated[GroupUseCases, Depends(get_group_use_case)]):
+async def get_group(
+    group_id: int, use_case: Annotated[GroupUseCases, Depends(get_group_use_case)]
+) -> dict:
     return await use_case.get(group_id)
 
 
 @router.patch(
     "/{group_id}",
     status_code=status.HTTP_201_CREATED,
-    response_model=GroupResponseSchema,
+    response_model=GroupUserResponseSchema,
     dependencies=[Depends(group_authorization(("admin",)))],
 )
 async def update_group(
-    group_id: int, payload: GroupCreateSchema, use_case: Annotated[GroupUseCases, Depends(get_group_use_case)]
-):
+    group_id: int,
+    payload: GroupCreateSchema,
+    use_case: Annotated[GroupUseCases, Depends(get_group_use_case)],
+) -> dict:
     return await use_case.update(group_id, payload)
 
 
@@ -71,7 +83,9 @@ async def update_group(
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Depends(group_authorization(("admin",)))],
 )
-async def delete_group(group_id: int, use_case: Annotated[GroupUseCases, Depends(get_group_use_case)]):
+async def delete_group(
+    group_id: int, use_case: Annotated[GroupUseCases, Depends(get_group_use_case)]
+) -> None:
     await use_case.delete(group_id)
 
 
@@ -81,8 +95,9 @@ async def delete_group(group_id: int, use_case: Annotated[GroupUseCases, Depends
     response_model=list[GroupMemberResponseSchema],
 )
 async def get_group_members(
-    group_id: int, use_case: Annotated[GroupMembersUseCases, Depends(get_group_members_use_case)]
-):
+    group_id: int,
+    use_case: Annotated[GroupMembersUseCases, Depends(get_group_members_use_case)],
+) -> Sequence[UserGroupsMembershipModel]:
     return await use_case.all(group_id)
 
 
@@ -96,7 +111,7 @@ async def add_member(
     group_id: int,
     payload: GroupAddMemberSchema,
     use_case: Annotated[GroupMembersUseCases, Depends(get_group_members_use_case)],
-):
+) -> UserGroupsMembershipModel | None:
     return await use_case.add_member(group_id, payload)
 
 
@@ -110,7 +125,7 @@ async def update_member(
     group_id: int,
     payload: GroupUpdateMemberSchema,
     use_case: Annotated[GroupMembersUseCases, Depends(get_group_members_use_case)],
-):
+) -> UserGroupsMembershipModel | None:
     return await use_case.update_member(group_id, payload)
 
 
@@ -120,6 +135,8 @@ async def update_member(
     status_code=status.HTTP_200_OK,
 )
 async def remove_group_members(
-    group_id: int, payload: list[int], use_case: Annotated[GroupMembersUseCases, Depends(get_group_members_use_case)]
-):
+    group_id: int,
+    payload: list[int],
+    use_case: Annotated[GroupMembersUseCases, Depends(get_group_members_use_case)],
+) -> None:
     await use_case.remove_members(group_id, payload)

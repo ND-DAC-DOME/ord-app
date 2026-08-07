@@ -18,8 +18,11 @@ import { ReactionCard } from 'common/components/ReactionCard/ReactionCard.tsx';
 import { Link, useParams } from 'wouter';
 import { useSelector } from 'react-redux';
 import { selectReactionById } from 'store/entities/reactions/reactions.selectors.ts';
-import { CopyButton, type CopyButtonOptions } from 'common/components/interactions/CopyButton/CopyButton.tsx';
-import { Flex } from '@mantine/core';
+import {
+  CopyButton,
+  type CopyButtonOptions,
+} from 'common/components/interactions/CopyButton/CopyButton.tsx';
+import { Flex, Tooltip } from '@mantine/core';
 import { AlertCircleIcon } from 'common/icons/index.ts';
 import classes from '../reactionsList.module.scss';
 import { useRef } from 'react';
@@ -33,12 +36,12 @@ interface ReactionTitleProps {
 
 function ReactionTitle({ index, id }: Readonly<ReactionTitleProps>) {
   const { datasetId: rawDatasetId } = useParams<{ datasetId: string }>();
-  const datasetId = parseInt(rawDatasetId);
+  const datasetId = Number.parseInt(rawDatasetId);
   const reaction = useSelector(selectReactionById(id));
   const copyToClipboardOptions: Array<CopyButtonOptions> = [
     {
       label: 'Copy Reaction Link',
-      value: `${window.location.href}/reactions/${id}`,
+      value: `${globalThis.location.href}/reactions/${id}`,
     },
     { label: 'Copy Reaction ID', value: reaction.pb_reaction_id },
   ];
@@ -51,12 +54,14 @@ function ReactionTitle({ index, id }: Readonly<ReactionTitleProps>) {
       className={clsx(classes.titleWrapper, typographyClasses.oneLineTextWrapper)}
     >
       <span className={classes.index}>{index}.</span>
-      <Link
-        className={clsx(classes.link, typographyClasses.oneLineText)}
-        to={linkToPage}
-      >
-        {reaction.pb_reaction_id}
-      </Link>
+      <Tooltip label={reaction.pb_reaction_id}>
+        <Link
+          className={clsx(classes.link, typographyClasses.oneLineText)}
+          to={linkToPage}
+        >
+          {reaction.pb_reaction_id}
+        </Link>
+      </Tooltip>
       <CopyButton options={copyToClipboardOptions} />
       {!reaction.is_valid && (
         <Flex
@@ -77,7 +82,10 @@ interface DatasetReactionCardProps {
   index: number;
 }
 
-export function DatasetReactionCard({ reactionId, index }: Readonly<DatasetReactionCardProps>) {
+export function DatasetReactionCard({
+  reactionId,
+  index,
+}: Readonly<DatasetReactionCardProps>) {
   const previewRef = useRef<HTMLDivElement | null>(null);
   const reaction = useSelector(selectReactionById(reactionId));
   return (

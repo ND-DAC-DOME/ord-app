@@ -20,7 +20,7 @@ from ord_app.service_api.repositories.base import BaseRepository
 class UserRepository(BaseRepository[UserModel]):
     model = UserModel
 
-    async def search_user_by_identity(self, identity: int | str) -> UserModel:
+    async def search_user_by_identity(self, identity: int | str) -> UserModel | None:
         stmt = (
             select(UserModel)
             .where(
@@ -34,7 +34,7 @@ class UserRepository(BaseRepository[UserModel]):
 
         return await self.db.scalar(stmt)
 
-    async def create_user(self, payload: dict, autocommit=True) -> UserModel:
+    async def create_user(self, payload: dict, autocommit: bool = True) -> UserModel:
         user = UserModel(**payload)
         if autocommit:
             await self.db.commit()

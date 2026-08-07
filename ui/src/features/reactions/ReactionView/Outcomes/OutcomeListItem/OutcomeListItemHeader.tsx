@@ -32,52 +32,62 @@ interface OutcomeListItemHeaderProps {
   pathComponents: ReactionPathComponents;
 }
 
-export function OutcomeListItemHeader({ outcome, pathComponents }: Readonly<OutcomeListItemHeaderProps>) {
+export function OutcomeListItemHeader({
+  outcome,
+  pathComponents,
+}: Readonly<OutcomeListItemHeaderProps>) {
   const { ViewDeleteButtonsComponent } = useContext(reactionContext);
   return (
-    <Accordion.Control
-      classNames={{ label: classes.label }}
-      icon={
-        <ViewDeleteButtonsComponent
-          entityName="Outcome"
-          pathComponents={pathComponents}
-        />
-      }
-    >
-      <Flex
-        align="center"
-        gap="xs"
+    // The view/delete buttons sit beside Accordion.Control rather than in its `icon` slot:
+    // Accordion.Control renders a <button>, and a nested <button> triggers a hydration error.
+    <div className={classes.controlRow}>
+      <ViewDeleteButtonsComponent
+        entityName="Outcome"
+        pathComponents={pathComponents}
+      />
+      <Accordion.Control
+        className={classes.control}
+        classNames={{ label: classes.label }}
       >
-        <TitleDelimiterAmount
-          title="Outcome"
-          amount={outcome.products.length}
-        />
-      </Flex>
-      {outcome.reactionTime && outcome.reactionTime.value && (
         <Flex
           align="center"
           gap="xs"
         >
-          <TimeIcon className={classes.shortInfoIcon} />
-          <Text className={clsx(classes.shortInfoText, typographyClasses.secondary2)}>Time: </Text>
-          <Text className={classes.shortInfoText}>{renderValuePrecisionUnit(outcome.reactionTime)}</Text>
+          <TitleDelimiterAmount
+            title="Outcome"
+            amount={outcome.products.length}
+          />
         </Flex>
-      )}
-      {outcome.conversion && outcome.conversion.value && (
-        <Flex
-          align="center"
-          gap="xs"
-        >
-          <FlaskIcon className={classes.shortInfoIcon} />
-          <Text className={clsx(classes.shortInfoText, typographyClasses.secondary2)}>
-            Limiting reactant conversion:{' '}
-          </Text>
-          <Text className={classes.shortInfoText}>
-            {renderValuePrecisionUnit({ ...outcome.conversion, units: '' })}
-          </Text>
-        </Flex>
-      )}
-      <Flex></Flex>
-    </Accordion.Control>
+        {outcome.reactionTime?.value && (
+          <Flex
+            align="center"
+            gap="xs"
+          >
+            <TimeIcon className={classes.shortInfoIcon} />
+            <Text className={clsx(classes.shortInfoText, typographyClasses.secondary2)}>
+              Time:{' '}
+            </Text>
+            <Text className={classes.shortInfoText}>
+              {renderValuePrecisionUnit(outcome.reactionTime)}
+            </Text>
+          </Flex>
+        )}
+        {outcome.conversion?.value && (
+          <Flex
+            align="center"
+            gap="xs"
+          >
+            <FlaskIcon className={classes.shortInfoIcon} />
+            <Text className={clsx(classes.shortInfoText, typographyClasses.secondary2)}>
+              Limiting reactant conversion:{' '}
+            </Text>
+            <Text className={classes.shortInfoText}>
+              {renderValuePrecisionUnit({ ...outcome.conversion, units: '' })}
+            </Text>
+          </Flex>
+        )}
+        <Flex></Flex>
+      </Accordion.Control>
+    </div>
   );
 }

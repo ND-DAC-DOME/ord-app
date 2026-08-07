@@ -19,6 +19,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { useAppDispatch } from 'store/useAppDispatch.ts';
 import { Button } from '@mantine/core';
 import { RemoveIcon } from 'common/icons';
+import { buttonClasses } from 'common/styling';
 import { ConfirmPopover } from 'common/components/interactions/ConfirmPopover/ConfirmPopover.tsx';
 import { removeTemplate } from 'store/entities/templates/templates.thunks.ts';
 import type { ReactionId } from 'store/entities/reactions/reactions.types.ts';
@@ -29,7 +30,8 @@ interface RemoveReactionProps {
 
 export function RemoveReaction({ reactionId }: Readonly<RemoveReactionProps>) {
   const dispatch = useAppDispatch();
-  const [confirmationOpened, { open: openConfirmation, close: closeConfirmation }] = useDisclosure();
+  const [confirmationOpened, { open: openConfirmation, close: closeConfirmation }] =
+    useDisclosure();
   const isTemplate = typeof reactionId === 'string';
   const entityToRemove = isTemplate ? 'template' : 'reaction';
 
@@ -54,6 +56,7 @@ export function RemoveReaction({ reactionId }: Readonly<RemoveReactionProps>) {
           variant="transparent"
           onClick={openConfirmation}
           color="red"
+          className={buttonClasses.redHover}
           leftSection={<RemoveIcon />}
         >
           Remove

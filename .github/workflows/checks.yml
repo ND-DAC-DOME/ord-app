@@ -26,8 +26,8 @@ jobs:
   check_license_headers:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '>=1.16'
       - name: Install dependencies
@@ -39,38 +39,49 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install Poetry
-        run: |
-          pipx install poetry
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: |
-          poetry install --with dev --no-interaction --no-ansi
+        run: uv sync --frozen
 
       - name: ruff
-        run: poetry run ruff check ord_app/
+        run: uv run ruff check ord_app/
 
-      - name: pytype
-        run: poetry run pytype -j auto
+      - name: ruff format
+        run: uv run ruff format --check ord_app/
+
+      - name: ty
+        run: uv run ty check ord_app
 
   check_javascript:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: clang-format
         run: |
           sudo apt update && sudo apt install clang-format --yes
           # NOTE(kearnes): Run clang-format before installing anything with npm.
           find . -name '*.js' -exec clang-format -n -Werror {} +
+
+  # Cross-language copy-paste detection (replaces SonarCloud's duplication metric).
+  # jscpd is pinned as a ui/ devDependency; run from the repo root so it scans both
+  # ord_app/ (Python) and ui/src/ (TS/TSX) per .jscpd.json. Runs on every PR (not
+  # path-filtered) so Python-only changes are covered too.
+  check_duplication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install jscpd (via ui devDependencies)
+        run: npm --prefix ui ci
+      - name: jscpd
+        run: ui/node_modules/.bin/jscpd --config .jscpd.json

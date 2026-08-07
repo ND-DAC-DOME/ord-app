@@ -23,19 +23,32 @@ import type { ReactionPathComponents } from 'common/types/reaction/reactionPathC
 
 export const buildUseCreate = <T = unknown>(
   entityName: string | ReactionPathComponents,
-  createKeyWithEmpty: (newIndex: number, list: Array<T>, creationInfo?: Partial<T>) => [number | string, T],
+  createKeyWithEmpty: (
+    newIndex: number,
+    list: Array<T>,
+    creationInfo?: Partial<T>,
+  ) => [number | string, T],
   shouldOpenSidebar = true,
 ) =>
   function useCreate() {
     const dispatch = useAppDispatch();
     const { reactionId } = useContext(reactionContext);
     const { pathComponents } = useContext(reactionEntityContext);
-    const entityPathComponents: ReactionPathComponents = typeof entityName === 'string' ? [entityName] : entityName;
 
     return useCallback(
       (newIndex: number, entitiesList: Array<T>, creationInfo?: Partial<T>) => {
-        const [key, newEntity] = createKeyWithEmpty(newIndex, entitiesList, creationInfo);
-        const updatedPathComponents = pathComponents.concat(entityPathComponents).concat(key);
+        // Derived from the stable factory arg `entityName`; computed here so it isn't a render-scope
+        // dependency that would defeat the useCallback memoization.
+        const entityPathComponents: ReactionPathComponents =
+          typeof entityName === 'string' ? [entityName] : entityName;
+        const [key, newEntity] = createKeyWithEmpty(
+          newIndex,
+          entitiesList,
+          creationInfo,
+        );
+        const updatedPathComponents = pathComponents
+          .concat(entityPathComponents)
+          .concat(key);
 
         dispatch(
           addUpdateReactionField({

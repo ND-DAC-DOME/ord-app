@@ -16,14 +16,22 @@
 import { useEffect, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useDisclosure } from '@mantine/hooks';
-import { ActionIcon, Drawer, Flex, Text } from '@mantine/core';
+import { ActionIcon, Drawer, Flex, Text, Tooltip } from '@mantine/core';
 import { EditIcon } from 'common/icons';
 import { InputModal } from 'common/components/InputModal/InputModal.tsx';
+import { MAX_CRITICAL_FIELD_LENGTH } from 'common/constants/fieldLimits.ts';
 import { getGroupMembers, renameGroup } from 'store/entities/groups/groups.thunks.ts';
 import { useAppDispatch } from 'store/useAppDispatch.ts';
-import { selectGroupById, selectIsGroupUpdating, selectMemberRoles } from 'store/entities/groups/groups.selectors.ts';
+import {
+  selectGroupById,
+  selectIsGroupUpdating,
+  selectMemberRoles,
+} from 'store/entities/groups/groups.selectors.ts';
 import { GroupMembersList } from './GroupMembersList/GroupMembersList.tsx';
-import { resetAddMemberErrorAction, setAddMemberInputValueAction } from 'store/entities/groups/groups.actions.ts';
+import {
+  resetAddMemberErrorAction,
+  setAddMemberInputValueAction,
+} from 'store/entities/groups/groups.actions.ts';
 import { AddMemberInput } from './AddMemberInput/AddMemberInput.tsx';
 import classes from './GroupsDrawer.module.scss';
 import { selectEditingGroupId } from 'store/features/groups/groups.selectors.ts';
@@ -58,7 +66,10 @@ export function GroupsDrawer() {
     dispatch(setEditingGroupIdAction(null));
   };
 
-  const copyButtonOptions = useMemo(() => (group ? [{ label: 'Copy ID', value: group.id.toString() }] : []), [group]);
+  const copyButtonOptions = useMemo(
+    () => (group ? [{ label: 'Copy ID', value: group.id.toString() }] : []),
+    [group],
+  );
 
   return (
     <>
@@ -82,9 +93,16 @@ export function GroupsDrawer() {
                 gap="4"
                 className={typographyClasses.oneLineTextWrapper}
               >
-                <Drawer.Title className={clsx(classes.title, typographyClasses.oneLineText)}>
-                  {group?.name}
-                </Drawer.Title>
+                <Tooltip
+                  label={group?.name}
+                  disabled={!group?.name}
+                >
+                  <Drawer.Title
+                    className={clsx(classes.title, typographyClasses.oneLineText)}
+                  >
+                    {group?.name}
+                  </Drawer.Title>
+                </Tooltip>
                 <CopyButton options={copyButtonOptions} />
                 <ActionIcon
                   variant="transparent"
@@ -110,6 +128,7 @@ export function GroupsDrawer() {
           title="Edit Group Name"
           inputLabel="Group name"
           initialValue={group?.name}
+          maxLength={MAX_CRITICAL_FIELD_LENGTH}
         />
       )}
     </>

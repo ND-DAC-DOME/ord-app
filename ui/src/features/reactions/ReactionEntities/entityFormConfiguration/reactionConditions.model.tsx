@@ -31,6 +31,7 @@ import {
   temperatureControlTypeOptions,
   temperatureOptions,
   tubingTypeOptions,
+  voltageUnitOptions,
   waveLengthTypeOptions,
 } from 'store/entities/reactions/reactionEntityTypes/reactionEntityTypes.models';
 import { buildUseSelectItems } from './buildUseSelectItems.ts';
@@ -51,9 +52,15 @@ import type { ReactionPathComponents } from 'common/types/reaction/reactionPathC
 import type { FieldConfiguration } from 'common/components/display/RequiredOptionalFields/requiredOptionalFields.types.ts';
 import { renderValuePrecisionUnit } from '../../ReactionView/renderValuePrecisionUnit.ts';
 
-const temperatureMeasurementsPathComponents = ['temperature', 'temperatureMeasurements'];
+const temperatureMeasurementsPathComponents = [
+  'temperature',
+  'temperatureMeasurements',
+];
 
-const electrochemistryMeasurementsPathComponents = ['electrochemistry', 'electrochemistryMeasurements'];
+const electrochemistryMeasurementsPathComponents = [
+  'electrochemistry',
+  'electrochemistryMeasurements',
+];
 
 const pressureMeasurementsPathComponents = ['pressure', 'pressureMeasurements'];
 
@@ -302,7 +309,9 @@ export const reactionConditions: Array<ReactionFormNode> = [
         pressureMeasurementsPathComponents,
         () =>
           ordPressureMeasurementToReaction(
-            ord.PressureConditions.PressureMeasurement.toObject(new ord.PressureConditions.PressureMeasurement()),
+            ord.PressureConditions.PressureMeasurement.toObject(
+              new ord.PressureConditions.PressureMeasurement(),
+            ),
           ),
         [
           {
@@ -405,6 +414,17 @@ export const reactionConditions: Array<ReactionFormNode> = [
         options: currentTypeOptions,
         wrapperConfig: {
           label: 'Current',
+        },
+        select: 'native-inline',
+      },
+      {
+        // The voltage value/precision/units field was missing from the form even though the data
+        // model and ord converters already support it. (#623)
+        type: ReactionFormNodeType.vpu,
+        name: 'electrochemistry.voltage',
+        options: voltageUnitOptions,
+        wrapperConfig: {
+          label: 'Voltage',
         },
         select: 'native-inline',
       },

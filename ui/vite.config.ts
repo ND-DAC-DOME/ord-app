@@ -30,6 +30,32 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    environment: 'happy-dom',
+    setupFiles: ['./src/test/setup.ts'],
+    // Unit tests live under src/; e2e/ is Playwright (run via `npm run test:e2e`), not vitest.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      // text/text-summary -> console; html + lcov -> uploaded artifacts; json-summary -> CI step summary.
+      reporter: ['text', 'text-summary', 'html', 'lcov', 'json-summary'],
+      reportsDirectory: './coverage',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/**/*.d.ts',
+        'src/test/**',
+        'src/**/*.module.scss',
+      ],
+      // Total-coverage floor enforced in CI (a regression backstop). Set a few points below
+      // current (lines/statements 66%, branches 84%, functions 63%) so routine churn doesn't
+      // trip it; ratchet up later.
+      thresholds: {
+        lines: 60,
+        statements: 60,
+        branches: 80,
+        functions: 60,
+      },
+    },
   },
   preview: {
     port: 5173,

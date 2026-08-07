@@ -64,6 +64,7 @@ export const reactionAnalyses: Array<ReactionFormNode> = [
       inputType: 'number',
       wrapperConfig: {
         label: 'Chmo ID',
+        hint: 'RSC Chemical Methods Ontology ID to define the analytical method with greater specificity. Defined at https://github.com/rsc-ontologies/rsc-cmo.',
       },
     },
     {
@@ -101,7 +102,10 @@ export const reactionAnalyses: Array<ReactionFormNode> = [
   {
     type: ReactionFormNodeType.list,
     name: 'analysisData',
-    useSelectItems: buildUseSelectItemsListFromMap('analysisData', compareNamedEntities),
+    useSelectItems: buildUseSelectItemsListFromMap(
+      'analysisData',
+      compareNamedEntities,
+    ),
     getKey: (item: AppData) => item.id,
     title: {
       label: 'Analytical Data',

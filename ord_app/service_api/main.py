@@ -13,25 +13,36 @@
 # limitations under the License.
 import asyncio
 import sys
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 
 import asyncpg
 import psycopg.errors
-from fastapi import APIRouter, FastAPI, Request, status
+from fastapi import APIRouter, FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_pagination import add_pagination
 from loguru import logger
 from rdkit import RDLogger
 from sqlalchemy.exc import DataError, DBAPIError
+from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import JSONResponse
 
 from ord_app.service_api.constants import AppEnvs
 from ord_app.service_api.domain.reactions import validate_dataset_reactions
-from ord_app.service_api.resources.v1 import auth, datasets, group, reactions, templates, users, utilities
+from ord_app.service_api.resources.v1 import (
+    auth,
+    datasets,
+    group,
+    reactions,
+    templates,
+    users,
+    utilities,
+)
 from ord_app.service_api.services.postgresql import db_session_maker
 from ord_app.service_api.settings import RuntimeSettings
 
-RDLogger.DisableLog('rdApp.*')
+# rdkit ships no type stubs
+RDLogger.DisableLog("rdApp.*")  # ty: ignore[unresolved-attribute]
 logger.remove()
 match RuntimeSettings.app_env:
     case AppEnvs.production:
@@ -42,25 +53,39 @@ match RuntimeSettings.app_env:
         logger.add(sys.stdout, level="INFO")
 
 
-async def run_background_task():
+async def run_background_task() -> None:
     async with db_session_maker() as db:
         await validate_dataset_reactions(db)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    asyncio.create_task(run_background_task())
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Keep a reference so the task isn't garbage-collected before it completes.
+    app.state.background_task = asyncio.create_task(run_background_task())
     yield
+    # On shutdown, cancel the background task so it isn't force-killed mid-DB-session.
+    app.state.background_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await app.state.background_task
 
-app = FastAPI(root_path="/service_api", swagger_ui_parameters={"tryItOutEnabled": True}, lifespan=lifespan)
+
+app = FastAPI(
+    root_path="/service_api",
+    swagger_ui_parameters={"tryItOutEnabled": True},
+    lifespan=lifespan,
+)
 
 
 @app.middleware("http")
-async def catch_errors(request: Request, call_next):
+async def catch_errors(
+    request: Request, call_next: RequestResponseEndpoint
+) -> Response:
     try:
         return await call_next(request)
     except (DataError, DBAPIError) as err:
-        context_err = err.orig.__context__ or err.orig
+        context_err = (
+            (err.orig.__context__ or err.orig) if err.orig is not None else err
+        )
         if isinstance(context_err, asyncpg.UniqueViolationError):
             return JSONResponse(
                 status_code=status.HTTP_409_CONFLICT,
@@ -92,7 +117,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"]
+    expose_headers=["Content-Disposition"],
 )
 
 editor = APIRouter(prefix="/api/v1")
@@ -111,5 +136,5 @@ add_pagination(app)
 
 
 @app.get("/healthcheck")
-async def health_check():
+async def health_check() -> bool:
     return True

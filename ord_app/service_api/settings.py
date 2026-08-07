@@ -21,11 +21,17 @@ from ord_app.service_api.constants import AppEnvs
 
 class Settings(BaseSettings):
     base_dir: PosixPath = PosixPath(__file__).parent
-    model_config = SettingsConfigDict(env_file=str(base_dir.parent / ".env"), case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=str(base_dir.parent / ".env"), case_sensitive=False
+    )
 
     # app
     app_env: str = AppEnvs.production
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+
+    # Dev/test-only Auth0 bypass for local development and E2E (see #664). Ignored unless
+    # app_env is non-production (see ``e2e_auth_enabled``), so it can never weaken prod auth.
+    e2e: bool = Field(False, validation_alias="ord_app_e2e")
 
     # databases
     pg_dsn: str = "postgresql+asyncpg://ord@localhost:5400/ord"  # NOSONAR

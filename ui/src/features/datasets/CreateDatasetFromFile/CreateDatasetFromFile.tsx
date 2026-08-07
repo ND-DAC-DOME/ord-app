@@ -18,7 +18,10 @@ import { useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { useForm, yupResolver } from '@mantine/form';
 import { FormModal } from 'common/components/FormModal/FormModal.tsx';
-import { type CreateDatasetFromFileFormValues, createDatasetFromFileSchema } from './createDatasetFromFile.schema.ts';
+import {
+  type CreateDatasetFromFileFormValues,
+  createDatasetFromFileSchema,
+} from './createDatasetFromFile.schema.ts';
 import type { CreateDatasetFromFilePayload } from 'store/entities/datasets/datasets.types.ts';
 import { createDatasetFromFile } from 'store/entities/datasets/datasets.thunks.ts';
 import { useAppDispatch } from 'store/useAppDispatch.ts';
@@ -30,7 +33,9 @@ interface CreateDatasetFromFileProps {
   onClose: () => void;
 }
 
-export function CreateDatasetFromFile({ onClose }: Readonly<CreateDatasetFromFileProps>) {
+export function CreateDatasetFromFile({
+  onClose,
+}: Readonly<CreateDatasetFromFileProps>) {
   const dispatch = useAppDispatch();
   const activeGroupId = useSelector(selectActiveGroupId);
   const isDatasetCreating = useSelector(selectIsDatasetCreating);
@@ -45,7 +50,7 @@ export function CreateDatasetFromFile({ onClose }: Readonly<CreateDatasetFromFil
       file: '',
     },
     transformValues: values => ({
-      groupId: parseInt(values.groupId),
+      groupId: Number.parseInt(values.groupId),
       file: values.file as File,
     }),
     validate: yupResolver(createDatasetFromFileSchema),
@@ -66,11 +71,15 @@ export function CreateDatasetFromFile({ onClose }: Readonly<CreateDatasetFromFil
       submitTitle="Save"
       loading={isDatasetCreating}
     >
-      <GroupSelector {...form.getInputProps('groupId')} />
+      <GroupSelector
+        withAsterisk
+        {...form.getInputProps('groupId')}
+      />
       <FileInput
         label="Dataset file"
-        accept=".binpb,.txtpb,application/json"
-        description=".binpb, .txtpb or .json | Max: 100 MB"
+        withAsterisk
+        accept=".binpb,.txtpb,.parquet,application/json"
+        description=".binpb, .txtpb, .json or .parquet | Max: 100 MB"
         {...form.getInputProps('file')}
       />
     </FormModal>

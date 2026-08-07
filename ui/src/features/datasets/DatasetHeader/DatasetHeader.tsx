@@ -15,8 +15,11 @@
  */
 import { DataField } from 'common/components/display/DataField/DataField.tsx';
 import { UserField } from 'common/components/display/UserField/UserField.tsx';
-import { ActionIcon, Button, Flex, Paper, Title } from '@mantine/core';
-import { CopyButton, type CopyButtonOptions } from 'common/components/interactions/CopyButton/CopyButton.tsx';
+import { ActionIcon, Button, Flex, Paper, Title, Tooltip } from '@mantine/core';
+import {
+  CopyButton,
+  type CopyButtonOptions,
+} from 'common/components/interactions/CopyButton/CopyButton.tsx';
 import { formatUtcDateToDisplay } from 'common/utils';
 import { DownloadMenu } from 'common/components/DownloadMenu/DownloadMenu.tsx';
 import { ChevronDownIcon, EditIcon, RemoveIcon } from 'common/icons';
@@ -28,15 +31,18 @@ import { useSelector } from 'react-redux';
 import { selectIsDatasetOpened } from 'store/entities/datasets/datasets.selectors.ts';
 import { setDatasetEditOpenedAction } from 'store/entities/datasets/datasets.actions.ts';
 import { useAppDispatch } from 'store/useAppDispatch.ts';
-import { fileDownloadOptions } from 'common/constants.ts';
+import { datasetFileDownloadOptions } from 'common/constants.ts';
 import { ConfirmPopover } from 'common/components/interactions/ConfirmPopover/ConfirmPopover.tsx';
 import { useDisclosure } from '@mantine/hooks';
 import { removeDataset } from 'store/entities/datasets/datasets.thunks.ts';
 import { GroupsListWithRoles } from 'common/components/GroupsListWithRoles/GroupsListWithRoles.tsx';
 import classes from './datasetHeader.module.scss';
-import { selectCanDatasetBeEdited } from 'store/features/canDatasetBeEdited/canDatasetBeEdited.selectors.ts';
+import {
+  selectCanDatasetBeDeleted,
+  selectCanDatasetBeEdited,
+} from 'store/features/canDatasetBeEdited/canDatasetBeEdited.selectors.ts';
 import { domain } from 'common/configuration.constants.ts';
-import { typographyClasses } from 'common/styling';
+import { buttonClasses, typographyClasses } from 'common/styling';
 import { ShareDataset } from '../ShareDataset/ShareDataset.tsx';
 
 interface DatasetHeaderProps {
@@ -48,8 +54,10 @@ export function DatasetHeader({ dataset }: Readonly<DatasetHeaderProps>) {
   const { base } = useRouter();
   const dispatch = useAppDispatch();
   const isEditOpened = useSelector(selectIsDatasetOpened);
-  const [removeConfirmOpened, { open: openRemoveConfirm, close: closeRemoveConfirm }] = useDisclosure(false);
+  const [removeConfirmOpened, { open: openRemoveConfirm, close: closeRemoveConfirm }] =
+    useDisclosure(false);
   const canDatasetBeEdited = useSelector(selectCanDatasetBeEdited);
+  const canDatasetBeDeleted = useSelector(selectCanDatasetBeDeleted);
 
   const openEdit = useCallback(() => {
     dispatch(setDatasetEditOpenedAction(true));
@@ -95,7 +103,9 @@ export function DatasetHeader({ dataset }: Readonly<DatasetHeaderProps>) {
               <CopyButton options={copyToClipboardOptions} />
             </Flex>
           </DataField>
-          <DataField label="Last Modified">{formatUtcDateToDisplay(dataset.modified_at)}</DataField>
+          <DataField label="Last Modified">
+            {formatUtcDateToDisplay(dataset.modified_at)}
+          </DataField>
         </div>
         <Flex
           className={classes.title}
@@ -110,12 +120,14 @@ export function DatasetHeader({ dataset }: Readonly<DatasetHeaderProps>) {
               Dataset
             </Title>
           )}
-          <Title
-            className={typographyClasses.oneLineText}
-            order={1}
-          >
-            {dataset.name || dataset.id}
-          </Title>
+          <Tooltip label={dataset.name || dataset.id}>
+            <Title
+              className={typographyClasses.oneLineText}
+              order={1}
+            >
+              {dataset.name || dataset.id}
+            </Title>
+          </Tooltip>
           {canDatasetBeEdited && (
             <ActionIcon
               variant="transparent"
@@ -134,7 +146,7 @@ export function DatasetHeader({ dataset }: Readonly<DatasetHeaderProps>) {
         className={classes.buttonContainer}
         gap="sm"
       >
-        {canDatasetBeEdited && (
+        {canDatasetBeDeleted && (
           <ConfirmPopover
             opened={removeConfirmOpened}
             position="right"
@@ -145,6 +157,7 @@ export function DatasetHeader({ dataset }: Readonly<DatasetHeaderProps>) {
             onCancel={closeRemoveConfirm}
             target={
               <Button
+                className={buttonClasses.redHover}
                 classNames={{ section: classes.removeIcon }}
                 variant="transparent"
                 color="red"
@@ -158,7 +171,7 @@ export function DatasetHeader({ dataset }: Readonly<DatasetHeaderProps>) {
         )}
         <ShareDataset dataset={dataset} />
         <DownloadMenu
-          options={fileDownloadOptions}
+          options={datasetFileDownloadOptions}
           url={`/datasets/${dataset.id}/download`}
           target={
             <Button

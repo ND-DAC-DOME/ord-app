@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from base64 import b64decode, b64encode
-from typing import Any
+from datetime import datetime
+from typing import Annotated, Any
 
 import orjson
 from ord_schema.proto.reaction_pb2 import Reaction
-from pydantic import Field, Json, constr, field_validator, model_validator
+from pydantic import Field, Json, StringConstraints, field_validator, model_validator
 
 from ord_app.service_api.schemas.base import MAX_CRITICAL_FIELD_LENGTH, BaseSchema
 from ord_app.service_api.schemas.reactions import get_molblocks
@@ -29,58 +30,66 @@ class TemplateResponseModel(BaseSchema):
     binpb: bytes | Any
     variables: Json
     molblocks: dict
-    summary: dict = Field(default_factory=lambda: {"provenance": {"doi": "foo"}, "summary": {"yield": 25.5}})
+    modified_at: datetime
+    summary: dict = Field(
+        default_factory=lambda: {
+            "provenance": {"doi": "foo"},
+            "summary": {"yield": 25.5},
+        }
+    )
 
     @model_validator(mode="before")
     @classmethod
-    def _fill_molblocks(cls, data: Any):
+    def _fill_molblocks(cls, data: Any) -> Any:
         data.molblocks = get_molblocks(load_message(data.binpb, Reaction, "binpb"))
         return data
 
     @field_validator("variables", mode="before")
     @classmethod
-    def load_variables(cls, raw):
+    def load_variables(cls, raw: Any) -> bytes:
         return orjson.dumps(raw)
 
     @field_validator("binpb", mode="before")
     @classmethod
-    def load_binpb(cls, raw):
+    def load_binpb(cls, raw: Any) -> bytes:
         return b64encode(raw)
 
 
 class TemplateCreateModel(BaseSchema):
-    name: constr(max_length=MAX_CRITICAL_FIELD_LENGTH)
+    name: Annotated[str, StringConstraints(max_length=MAX_CRITICAL_FIELD_LENGTH)]
     binpb: bytes | Any
     variables: Json
 
     @field_validator("variables", mode="before")
     @classmethod
-    def load_variables(cls, raw):
+    def load_variables(cls, raw: Any) -> bytes:
         return orjson.dumps(raw)
 
     @field_validator("binpb", mode="after")
     @classmethod
-    def load_binpb(cls, raw):
+    def load_binpb(cls, raw: Any) -> Reaction:
         return load_message(b64decode(raw), Reaction, "binpb")
 
-    def model_dump(self, *args, **kwargs)  -> dict[str, Any]:
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         data = super().model_dump(*args, **kwargs)
         data["binpb"] = data["binpb"].SerializeToString()
         return data
 
 
 class TemplateUpdateModel(BaseSchema):
-    name: constr(max_length=MAX_CRITICAL_FIELD_LENGTH) | None = None
+    name: (
+        Annotated[str, StringConstraints(max_length=MAX_CRITICAL_FIELD_LENGTH)] | None
+    ) = None
     binpb: bytes | None = None
     variables: Json | None = None
 
     @field_validator("binpb", mode="after")
     @classmethod
-    def load_binpb(cls, raw):
+    def load_binpb(cls, raw: Any) -> Reaction | None:
         if raw is not None:
             return load_message(b64decode(raw), Reaction, "binpb")
 
-    def model_dump(self, *args, **kwargs)  -> dict[str, Any]:
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         data = super().model_dump(*args, **kwargs)
         if data.get("binpb") is not None:
             data["binpb"] = data["binpb"].SerializeToString()
@@ -88,5 +97,5 @@ class TemplateUpdateModel(BaseSchema):
 
     @field_validator("variables", mode="before")
     @classmethod
-    def load_variables(cls, raw):
+    def load_variables(cls, raw: Any) -> bytes:
         return orjson.dumps(raw)

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 import { ActionIcon, Flex, Paper, Title } from '@mantine/core';
+import { DataField } from 'common/components/display/DataField/DataField.tsx';
+import { formatUtcDateToDisplay } from 'common/utils';
 import { selectReactionById } from 'store/entities/reactions/reactions.selectors.ts';
 import { useSelector } from 'react-redux';
 import { EditIcon } from 'common/icons';
@@ -21,6 +23,7 @@ import { useCallback } from 'react';
 import { useDisclosure } from '@mantine/hooks';
 import { useAppDispatch } from 'store/useAppDispatch.ts';
 import { InputModal } from 'common/components/InputModal/InputModal.tsx';
+import { MAX_CRITICAL_FIELD_LENGTH } from 'common/constants/fieldLimits.ts';
 import { ReactionPreview } from 'common/components/ReactionPreview/ReactionPreview.tsx';
 import { TemplateHeaderActions } from 'features/templates/TemplateHeaderActions/TemplateHeaderActions';
 import { renameTemplate } from 'store/entities/templates/templates.thunks.ts';
@@ -92,6 +95,9 @@ export function TemplateHeader({ templateId }: Readonly<TemplateHeaderProps>) {
               </ActionIcon>
             </Flex>
           </Flex>
+          <DataField label="Last Modified">
+            {formatUtcDateToDisplay(template.modified_at)}
+          </DataField>
           <ReactionPreview reaction={template} />
         </Flex>
         {opened && (
@@ -101,6 +107,7 @@ export function TemplateHeader({ templateId }: Readonly<TemplateHeaderProps>) {
             title="Edit Template ID"
             inputLabel="Template ID"
             initialValue={template.name}
+            maxLength={MAX_CRITICAL_FIELD_LENGTH}
           />
         )}
       </Paper>

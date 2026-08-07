@@ -18,7 +18,13 @@ from typing import Literal, get_args
 from ord_schema.proto.reaction_pb2 import Reaction
 from sqlalchemy import Enum, ForeignKey, Index, LargeBinary, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column, relationship
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    declared_attr,
+    mapped_column,
+    relationship,
+)
 
 from ord_app.service_api.services.pb_utils import load_message
 
@@ -27,11 +33,16 @@ UserRolesList = Literal["admin", "editor", "viewer"]
 
 class BaseModel(DeclarativeBase):
     created_at: Mapped[datetime.datetime] = mapped_column(server_default=func.now())
-    modified_at: Mapped[datetime.datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    modified_at: Mapped[datetime.datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
 
     @declared_attr
-    def __tablename__(cls):
-        return re.sub(r"(?<!^)(?=[A-Z])", "_", cls.__name__.removesuffix("Model")).lower()
+    # @declared_attr's typing expects an ORM descriptor return, not a plain `-> str`.
+    def __tablename__(cls):  # noqa: ANN204
+        return re.sub(
+            r"(?<!^)(?=[A-Z])", "_", cls.__name__.removesuffix("Model")
+        ).lower()
 
 
 class UserModel(BaseModel):
@@ -49,16 +60,26 @@ class UserModel(BaseModel):
         overlaps="groups_member",
     )
 
-    templates: Mapped["TemplateModel"] = relationship("TemplateModel", back_populates="owner")
+    templates: Mapped["TemplateModel"] = relationship(
+        "TemplateModel", back_populates="owner"
+    )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email})>"
 
 
 class GroupModel(BaseModel):
+    # The current user's role in this group is computed per request and attached for
+    # serialization; it is not persisted. __allow_unmapped__ keeps SQLAlchemy from
+    # treating this plain annotation as a mapped column.
+    __allow_unmapped__ = True
+    role: "UserRolesList | None" = None
+
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(nullable=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"), nullable=True)
+    owner_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="SET NULL"), nullable=True
+    )
     owner: Mapped[UserModel] = relationship(UserModel, backref="owner_groups")
 
     datasets: Mapped[list["DatasetModel"]] = relationship(
@@ -73,17 +94,21 @@ class GroupModel(BaseModel):
         overlaps="groups_member",
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Group(id={self.id}, name={self.name})>"
 
 
 class UserGroupsMembershipModel(BaseModel):
-    user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), primary_key=True
+    )
     user: Mapped[UserModel] = relationship(
         UserModel, backref="groups_member", overlaps="groups,members"
     )
 
-    group_id: Mapped[int] = mapped_column(ForeignKey("group.id", ondelete="CASCADE"), primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("group.id", ondelete="CASCADE"), primary_key=True
+    )
     group: Mapped[GroupModel] = relationship(
         GroupModel, backref="groups_member", overlaps="groups,members"
     )
@@ -97,7 +122,7 @@ class UserGroupsMembershipModel(BaseModel):
         )
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<UserGroup(user_id={self.user_id}, group_id={self.group_id}, role={self.role})>"
 
 
@@ -110,9 +135,7 @@ class DatasetModel(BaseModel):
     owner: Mapped[UserModel] = relationship(UserModel, backref="datasets")
 
     reactions: Mapped[list["ReactionModel"]] = relationship(
-        "ReactionModel",
-        back_populates="dataset",
-        order_by="ReactionModel.id"
+        "ReactionModel", back_populates="dataset", order_by="ReactionModel.id"
     )
 
     groups: Mapped[list[GroupModel]] = relationship(
@@ -122,22 +145,26 @@ class DatasetModel(BaseModel):
     )
 
     __table_args__ = (
-        Index('ix_dataset_owner_id', 'owner_id', postgresql_using='hash'),
+        Index("ix_dataset_owner_id", "owner_id", postgresql_using="hash"),
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Dataset(id={self.id}, name={self.name}, user_id={self.owner_id})>"
 
 
 class DatasetGroupAssociationModel(BaseModel):
-    dataset_id: Mapped[int] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"), primary_key=True)
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("dataset.id", ondelete="CASCADE"), primary_key=True
+    )
     dataset: Mapped[DatasetModel] = relationship(
         DatasetModel,
         backref="dataset_group_associations",
         overlaps="groups,datasets",
     )
 
-    group_id: Mapped[int] = mapped_column(ForeignKey("group.id", ondelete="CASCADE"), primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("group.id", ondelete="CASCADE"), primary_key=True
+    )
     group: Mapped[GroupModel] = relationship(
         GroupModel,
         backref="dataset_group_associations",
@@ -147,38 +174,52 @@ class DatasetGroupAssociationModel(BaseModel):
     # This flag indicates that this is the main group and that related dataset can be shared with another group.
     is_primary: Mapped[bool] = mapped_column(default=True)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             "<DatasetGroupAssociation("
             f"dataset_id={self.dataset_id}, group_id={self.group_id}, is_primary={self.is_primary}"
             ")>"
         )
 
+
 class ReactionModel(BaseModel):
+    # Validation errors/warnings are computed per request and attached for serialization;
+    # they are not persisted. __allow_unmapped__ tells SQLAlchemy to treat this plain
+    # annotation as an ordinary attribute rather than a mapped column.
+    __allow_unmapped__ = True
+    validation: dict[str, list[str]] | None = None
+
     id: Mapped[int] = mapped_column(primary_key=True)
     pb_reaction_id: Mapped[str]
     binpb: Mapped[bytes] = mapped_column(LargeBinary, nullable=True)
-    is_valid: Mapped[bool] = mapped_column(nullable=True)
+    is_valid: Mapped[bool | None] = mapped_column(nullable=True)
 
-    dataset_id: Mapped[int] = mapped_column(ForeignKey("dataset.id", ondelete="CASCADE"))
-    dataset: Mapped[DatasetModel] = relationship(DatasetModel, back_populates="reactions")
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("dataset.id", ondelete="CASCADE")
+    )
+    dataset: Mapped[DatasetModel] = relationship(
+        DatasetModel, back_populates="reactions"
+    )
 
     owner_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="SET NULL"))
     owner: Mapped[UserModel] = relationship(UserModel, backref="reactions")
 
     __table_args__ = (
-        UniqueConstraint("pb_reaction_id", "dataset_id", name="uq_pb_reaction_id_dataset_id"),
-        Index('ix_reaction_pb_reaction_id', 'pb_reaction_id', postgresql_using='hash'),
-        Index('ix_reaction_dataset_id', 'dataset_id', postgresql_using='hash'),
-        Index('ix_reaction_owner_id', 'owner_id', postgresql_using='hash'),
+        UniqueConstraint(
+            "pb_reaction_id", "dataset_id", name="uq_pb_reaction_id_dataset_id"
+        ),
+        Index("ix_reaction_pb_reaction_id", "pb_reaction_id", postgresql_using="hash"),
+        Index("ix_reaction_dataset_id", "dataset_id", postgresql_using="hash"),
+        Index("ix_reaction_owner_id", "owner_id", postgresql_using="hash"),
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Reaction(id={self.id}, dataset_id={self.dataset_id}, name={self.pb_reaction_id})>"
 
     @property
     def pb(self) -> Reaction | None:
         return load_message(self.binpb, Reaction, "binpb") if self.binpb else None
+
 
 class TemplateModel(BaseModel):
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -190,8 +231,8 @@ class TemplateModel(BaseModel):
     owner: Mapped[UserModel] = relationship(UserModel, back_populates="templates")
 
     __table_args__ = (
-        Index('ix_template_owner_id', 'owner_id', postgresql_using='hash'),
+        Index("ix_template_owner_id", "owner_id", postgresql_using="hash"),
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Template(id={self.id}, name={self.name})>"

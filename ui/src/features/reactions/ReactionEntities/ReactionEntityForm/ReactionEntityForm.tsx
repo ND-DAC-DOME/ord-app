@@ -19,9 +19,19 @@ import classes from './reactionEntityForm.module.scss';
 import { addUpdateReactionField } from 'store/entities/reactions/reactions.thunks.ts';
 import { useAppDispatch } from 'store/useAppDispatch.ts';
 import type { ReactionPathComponents } from 'common/types/reaction/reactionPathComponents.ts';
-import { ReactionEntityBaseNode, reactionEntityToForm } from 'features/reactions/ReactionEntities';
+import {
+  ReactionEntityBaseNode,
+  reactionEntityToForm,
+} from 'features/reactions/ReactionEntities';
 import { reactionEntityContext } from 'features/reactions/ReactionEntities/reactionEntity.context.ts';
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  type KeyboardEvent,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import type { ReactionEntityContext } from 'features/reactions/ReactionEntities/reactionEntities.types.ts';
 import type { ReactionSidebarInfo } from 'features/reactions/ReactionEntities/sidebarInfo/sidebarInfo.types.ts';
 import { reactionContext } from '../../reactions.context.ts';
@@ -64,12 +74,14 @@ export function ReactionEntityForm({
   );
 
   const formEntity = sidebarInfo.entityName;
-  const validate = useReactionEntityValidation(reactionId, reactionPathComponents, formEntity);
-
-  const [initialValues, reactionPartWithNestedEntities, filterValues] = sidebarInfo.useInitialValues(
+  const validate = useReactionEntityValidation(
     reactionId,
     reactionPathComponents,
+    formEntity,
   );
+
+  const [initialValues, reactionPartWithNestedEntities, filterValues] =
+    sidebarInfo.useInitialValues(reactionId, reactionPathComponents);
 
   const form = useForm({
     mode: 'uncontrolled',
@@ -102,17 +114,33 @@ export function ReactionEntityForm({
       if (isViewOnly) return;
       formMethods.resetDirty();
       onSetFormDirty(reactionPathComponents, false);
-      dispatch(addUpdateReactionField({ reactionId, pathComponents: reactionPathComponents, newValue: values }));
+      dispatch(
+        addUpdateReactionField({
+          reactionId,
+          pathComponents: reactionPathComponents,
+          newValue: values,
+        }),
+      );
     },
-    [dispatch, formMethods, isViewOnly, onSetFormDirty, reactionId, reactionPathComponents],
+    [
+      dispatch,
+      formMethods,
+      isViewOnly,
+      onSetFormDirty,
+      reactionId,
+      reactionPathComponents,
+    ],
   );
 
   const onPasteChunk = useCallback(
     (reactionPart: object) => {
       try {
+        // Submit the filtered values, not the raw clipboard chunk: fields the sidebar excludes
+        // (e.g. setup.automationCode, provenance.recordModified, product.measurements) are edited
+        // in their own sidebars and must not be merged in here, or they get duplicated/retained.
         const formValues = filterValues(reactionPart);
         form.setValues(formValues);
-        onSubmit(reactionPart);
+        onSubmit(formValues);
         setFormKey(crypto.randomUUID());
       } catch (_e: unknown) {
         showNotification({
@@ -124,6 +152,28 @@ export function ReactionEntityForm({
     [filterValues, form, onSubmit],
   );
 
+  // Save the form and, only if it validated, return to the parent sidebar level. Mirrors the
+  // validate-then-submit gating the Save button gets from <Form>, then closes on success. (#550)
+  const handleSaveAndClose = useCallback(() => {
+    if (isViewOnly) return;
+    const { hasErrors } = form.validate();
+    if (hasErrors) return;
+    onSubmit(form.getValues());
+    onFormClose();
+  }, [form, isViewOnly, onSubmit, onFormClose]);
+
+  // Cmd/Ctrl+Enter triggers Save and Close. Scoped to this form's DOM subtree (not a global
+  // hotkey) so hidden sibling forms in the mounted sidebar stack don't also fire. (#550)
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLFormElement>) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        handleSaveAndClose();
+      }
+    },
+    [handleSaveAndClose],
+  );
+
   return (
     <reactionEntityContext.Provider value={contextValue}>
       {isHidden ? null : (
@@ -131,6 +181,7 @@ export function ReactionEntityForm({
           className={classes.wrapper}
           form={form}
           onSubmit={onSubmit}
+          onKeyDown={handleKeyDown}
           key={formKey}
         >
           <Flex
@@ -154,7 +205,12 @@ export function ReactionEntityForm({
           >
             {!isTemplate && (
               <Button
-                onClick={() => copyReactionPart(sidebarInfo.entityName, reactionPartWithNestedEntities)}
+                onClick={() =>
+                  copyReactionPart(
+                    sidebarInfo.entityName,
+                    reactionPartWithNestedEntities,
+                  )
+                }
                 disabled={isDirty}
               >
                 Copy Chunk
@@ -173,6 +229,14 @@ export function ReactionEntityForm({
                 color="primary"
               >
                 Save
+              </Button>
+            )}
+            {!isViewOnly && (
+              <Button
+                color="primary"
+                onClick={handleSaveAndClose}
+              >
+                Save and Close
               </Button>
             )}
           </Flex>

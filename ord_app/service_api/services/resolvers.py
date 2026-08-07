@@ -13,9 +13,11 @@
 # limitations under the License.
 import asyncio
 from functools import lru_cache
+from typing import Any
 from urllib.parse import quote
 
 from httpx import AsyncClient
+from loguru import logger
 from ord_schema import resolvers
 
 from ord_app.service_api.services.utils import alru_cache
@@ -24,33 +26,36 @@ from ord_app.service_api.services.utils import alru_cache
 async def _pubchem_resolve(value_type: str, value: str) -> tuple[str, str]:
     """Resolves compound identifiers to SMILES via the PubChem REST API."""
     async with AsyncClient(base_url="https://pubchem.ncbi.nlm.nih.gov") as client:
-        response = await client.get(f"/rest/pug/compound/{value_type}/{quote(value)}/property/IsomericSMILES/txt")
+        response = await client.get(
+            f"/rest/pug/compound/{value_type}/{quote(value)}/property/IsomericSMILES/txt"
+        )
         return "PubChem API", response.raise_for_status().text.strip()
 
 
-async def _cactus_resolve(*args, value: str) -> tuple[str, str]:
+async def _cactus_resolve(*args: Any, value: str) -> tuple[str, str]:
     """Resolves compound identifiers to SMILES via the CACTUS API."""
     async with AsyncClient(base_url="https://cactus.nci.nih.gov") as client:
         response = await client.get(f"/chemical/structure/{quote(value)}/smiles")
-        return "NCI/CADD Chemical Identifier Resolver", response.raise_for_status().text.strip()
+        return (
+            "NCI/CADD Chemical Identifier Resolver",
+            response.raise_for_status().text.strip(),
+        )
 
 
-async def _emolecules_resolve(*args, value: str) -> tuple[str, str]:
+async def _emolecules_resolve(*args: Any, value: str) -> tuple[str, str]:
     """Resolves compound identifiers to SMILES via the eMolecules API."""
     async with AsyncClient(base_url="https://www.emolecules.com") as client:
         response = await client.get(f"lookup?q={quote(value)}")
-        return "eMolecules Lookup Service", response.raise_for_status().text.split("\t")[0]
+        return "eMolecules Lookup Service", response.raise_for_status().text.split(
+            "\t"
+        )[0]
 
 
 @alru_cache(maxsize=128)
 async def name_resolve_cached(value_type: str, value: str) -> tuple[str, str] | None:
     tasks = []
     for resolver_func in (_pubchem_resolve, _cactus_resolve, _emolecules_resolve):
-        tasks.append(
-            asyncio.create_task(
-                resolver_func(value_type, value=value)
-            )
-        )
+        tasks.append(asyncio.create_task(resolver_func(value_type, value=value)))
 
     for completed_task in asyncio.as_completed(tasks):
         try:
@@ -59,7 +64,9 @@ async def name_resolve_cached(value_type: str, value: str) -> tuple[str, str] | 
                 if not t.done():
                     t.cancel()
             return response
-        except Exception:
+        except Exception as e:
+            # A failed/empty lookup is expected; log at debug and try the next resolver.
+            logger.debug(f"resolver failed: {e}")
             continue
 
 

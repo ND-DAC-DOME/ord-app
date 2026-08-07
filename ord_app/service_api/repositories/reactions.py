@@ -11,10 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from collections.abc import AsyncIterator, Sequence
 from itertools import batched
 
 from loguru import logger
-from sqlalchemy import insert, or_, select, update
+from sqlalchemy import Select, insert, or_, select, true, update
 
 from ord_app.service_api.models import ReactionModel
 from ord_app.service_api.repositories.base import BaseRepository
@@ -27,24 +28,28 @@ class ReactionsRepository(BaseRepository[ReactionModel]):
         self,
         dataset_id: int,
         pb_reaction_ids: list[str],
-        max_num_query_args=10_000
-    ):
+        max_num_query_args: int = 10_000,
+    ) -> AsyncIterator[ReactionModel]:
         for batch in batched(pb_reaction_ids, max_num_query_args):
             for item in await self.filter(dataset_id=dataset_id, pb_reaction_id=batch):
                 yield item
 
-    async def bulk_update(self, values):
+    async def bulk_update(self, values: list[dict]) -> None:
         await self.db.execute(update(ReactionModel), values)
         await self.db.commit()
 
-    async def stream_reactions(self, chunk_size: int = 1000, dataset_id: int | None = None):
+    async def stream_reactions(
+        self, chunk_size: int = 1000, dataset_id: int | None = None
+    ) -> AsyncIterator[Sequence[ReactionModel]]:
         last_id = None
         while True:
             stmt = (
                 select(ReactionModel)
                 .where(
-                    ReactionModel.id > last_id if last_id is not None else True,
-                    ReactionModel.dataset_id == dataset_id if dataset_id is not None else True,
+                    ReactionModel.id > last_id if last_id is not None else true(),
+                    ReactionModel.dataset_id == dataset_id
+                    if dataset_id is not None
+                    else true(),
                     ReactionModel.is_valid.is_(None),
                 )
                 .order_by(ReactionModel.id)
@@ -56,7 +61,11 @@ class ReactionsRepository(BaseRepository[ReactionModel]):
             yield reactions
             last_id = reactions[-1].id
 
-    async def create(self, dataset_id: int, user_id: int, payload: dict, autocommit: bool = True):
+    # Reaction creation needs ownership and dataset context, so this override deliberately
+    # takes a wider signature than the base create(payload).
+    async def create(  # ty: ignore[invalid-method-override]
+        self, dataset_id: int, user_id: int, payload: dict, autocommit: bool = True
+    ) -> ReactionModel:
         reaction = ReactionModel(owner_id=user_id, dataset_id=dataset_id, **payload)
 
         if autocommit:
@@ -67,7 +76,9 @@ class ReactionsRepository(BaseRepository[ReactionModel]):
 
         return reaction
 
-    def all_reactions_stmt(self, dataset_id: int, is_valid_query: dict | None = None):
+    def all_reactions_stmt(
+        self, dataset_id: int, is_valid_query: dict | None = None
+    ) -> Select:
         stmt = (
             select(ReactionModel)
             .where(ReactionModel.dataset_id == dataset_id)
@@ -83,7 +94,7 @@ class ReactionsRepository(BaseRepository[ReactionModel]):
 
         return stmt
 
-    async def bulk_create(self, payload: list[dict], autocommit: bool = True):
+    async def bulk_create(self, payload: list[dict], autocommit: bool = True) -> None:
         stmt = insert(ReactionModel).values(payload)
         if autocommit:
             await self.db.execute(stmt)
@@ -91,11 +102,8 @@ class ReactionsRepository(BaseRepository[ReactionModel]):
             logger.debug("Bulk reaction created with payload")
 
     async def find_duplicated_by_pb_reaction_id(
-        self,
-        dataset_id: int,
-        pb_reaction_id,
-        exclude_pb_reaction_ids: list[str]
-    ):
+        self, dataset_id: int, pb_reaction_id: str, exclude_pb_reaction_ids: list[str]
+    ) -> ReactionModel | None:
         stmt = (
             select(ReactionModel)
             .where(

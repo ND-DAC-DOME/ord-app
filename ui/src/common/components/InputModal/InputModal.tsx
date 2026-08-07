@@ -27,6 +27,7 @@ interface InputModalProps {
   initialValue?: string;
   inputLabel: string;
   inputPlaceholder?: string;
+  maxLength?: number;
   stayOpenedOnSubmit?: true;
 }
 
@@ -41,6 +42,7 @@ export function InputModal({
   inputLabel,
   initialValue = '',
   inputPlaceholder = '',
+  maxLength,
   stayOpenedOnSubmit,
 }: Readonly<InputModalProps>) {
   const {
@@ -80,7 +82,11 @@ export function InputModal({
   return (
     <Modal
       opened
-      classNames={{ content: classes.modal, header: classes.header, body: classes.body }}
+      classNames={{
+        content: classes.modal,
+        header: classes.header,
+        body: classes.body,
+      }}
       onClose={handleClose}
       title={title}
       centered
@@ -89,7 +95,9 @@ export function InputModal({
         <TextInput
           className={classes.inputWrapper}
           label={inputLabel}
+          withAsterisk
           placeholder={inputPlaceholder || ''}
+          maxLength={maxLength}
           {...getInputProps('value')}
         />
         <Flex

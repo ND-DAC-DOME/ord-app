@@ -40,9 +40,18 @@ import {
   ordProvenanceToReaction,
   reactionProvenanceToOrd,
 } from './reactionProvenance/reactionProvenance.converters.ts';
-import { ordConditionsToReaction, reactionConditionsToOrd } from './reactionConditions/reactionConditions.converter';
-import { ordWorkupToReaction, reactionWorkupToOrd } from './reactionWorkups/reactionWorkups.converters.ts';
-import { ordSetupToReactionSetup, reactionSetupToOrd } from './reactionSetup/reactionSetup.converter.ts';
+import {
+  ordConditionsToReaction,
+  reactionConditionsToOrd,
+} from './reactionConditions/reactionConditions.converter';
+import {
+  ordWorkupToReaction,
+  reactionWorkupToOrd,
+} from './reactionWorkups/reactionWorkups.converters.ts';
+import {
+  ordSetupToReactionSetup,
+  reactionSetupToOrd,
+} from './reactionSetup/reactionSetup.converter.ts';
 
 export function ordReactionToReaction(reaction: ord.IReaction): AppReaction {
   return {
@@ -75,9 +84,11 @@ export function reactionToOrdReaction({
     reactionId,
     inputs: reactionInputsToOrdInputs(inputs),
     outcomes: reactionOutcomesListToOrdOutcomesList(outcomes),
-    identifiers: identifiers.length > 0 ? identifiers.map(reactionIdentifierToOrd) : null,
+    identifiers:
+      identifiers.length > 0 ? identifiers.map(reactionIdentifierToOrd) : null,
     setup: reactionSetupToOrd(setup),
-    observations: observations.length > 0 ? observations.map(reactionObservationToOrd) : null,
+    observations:
+      observations.length > 0 ? observations.map(reactionObservationToOrd) : null,
     conditions: reactionConditionsToOrd(conditions),
     notes: reactionNotesToOrd(notes),
     provenance: reactionProvenanceToOrd(provenance),
@@ -113,9 +124,9 @@ export function convertReactionFloatsToDoubles(reactionPart: unknown): void {
         convertReactionFloatsToDoubles(value);
       } else if (typeof value === 'number') {
         if (Number.isInteger(value)) {
-          dynamicReactionPart[key] = parseInt(value.toString(), 10);
+          dynamicReactionPart[key] = Number.parseInt(value.toString(), 10);
         } else {
-          dynamicReactionPart[key] = parseFloat(value.toPrecision(PRECISION));
+          dynamicReactionPart[key] = Number.parseFloat(value.toPrecision(PRECISION));
         }
       }
     });

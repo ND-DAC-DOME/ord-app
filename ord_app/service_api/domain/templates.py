@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,37 +20,48 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ord_app.service_api.domain.auth import authenticate
 from ord_app.service_api.models import TemplateModel, UserModel
 from ord_app.service_api.repositories.templates import TemplateRepository
-from ord_app.service_api.schemas.templates import TemplateCreateModel, TemplateUpdateModel
+from ord_app.service_api.schemas.templates import (
+    TemplateCreateModel,
+    TemplateUpdateModel,
+)
 from ord_app.service_api.services.exceptions import EntityNotFoundError
 from ord_app.service_api.services.postgresql import get_db_session
 
 
 class TemplatesUseCase:
-    def __init__(self, db: AsyncSession, current_user: UserModel):
+    def __init__(self, db: AsyncSession, current_user: UserModel) -> None:
         self.db = db
         self.current_user = current_user
         self.template_repo = TemplateRepository(db)
 
     async def create(self, payload: TemplateCreateModel) -> TemplateModel:
-        payload = payload.model_dump() | {"owner_id": self.current_user.id}
-        return await self.template_repo.create(payload)
+        data = payload.model_dump() | {"owner_id": self.current_user.id}
+        return await self.template_repo.create(data)
 
     async def all(self) -> Sequence[TemplateModel]:
         return await self.template_repo.filter(owner_id=self.current_user.id)
 
     async def get(self, template_id: int) -> TemplateModel:
-        if template := await self.template_repo.get(id=template_id, owner_id=self.current_user.id):
+        if template := await self.template_repo.get(
+            id=template_id, owner_id=self.current_user.id
+        ):
             return template
         raise EntityNotFoundError("Template not found")
 
-    async def update(self, template_id: int, payload: TemplateUpdateModel):
-        payload = payload.model_dump(exclude_none=True)
-        if template := await self.template_repo.update(payload, id=template_id, owner_id=self.current_user.id):
+    async def update(
+        self, template_id: int, payload: TemplateUpdateModel
+    ) -> TemplateModel:
+        data = payload.model_dump(exclude_none=True)
+        if template := await self.template_repo.update(
+            data, id=template_id, owner_id=self.current_user.id
+        ):
             return template
         raise EntityNotFoundError("Template not found")
 
-    async def delete(self, template_id: int):
-        if count := await self.template_repo.delete(id=template_id, owner_id=self.current_user.id):
+    async def delete(self, template_id: int) -> int:
+        if count := await self.template_repo.delete(
+            id=template_id, owner_id=self.current_user.id
+        ):
             return count
         raise EntityNotFoundError("Template not found")
 

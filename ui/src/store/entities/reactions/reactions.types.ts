@@ -15,7 +15,10 @@
  */
 import type { ReactionPathComponents } from 'common/types/reaction/reactionPathComponents.ts';
 import type { ReactionInput } from 'store/entities/reactions/reactionsInputs/reactionInputs.types.ts';
-import type { ComponentProductPreview, PreviewsById } from './reactionsPreviews/reactionsPreviews.types.ts';
+import type {
+  ComponentProductPreview,
+  PreviewsById,
+} from './reactionsPreviews/reactionsPreviews.types.ts';
 import type { ReactionOutcome } from 'store/entities/reactions/reactionsOutcomes/reactionOutcomes.types.ts';
 import type {
   Optional,
@@ -71,7 +74,9 @@ export interface OrdToReactionNamedEntityConverter {
   convert: (ordEntity: any, name: string) => WithIdName<any>;
 }
 
-export type OrdToReactionEntityConverter = OrdToReactionNamelessEntityConverter | OrdToReactionNamedEntityConverter;
+export type OrdToReactionEntityConverter =
+  | OrdToReactionNamelessEntityConverter
+  | OrdToReactionNamedEntityConverter;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ReactionToOrdEntityConverter = (reactionEntity: any) => Optional<object>;
@@ -91,7 +96,9 @@ export interface ErrorWarningMessageWithPath extends ErrorWarningMessageTextOnly
   originalPath: string;
 }
 
-export type ErrorWarningMessage = ErrorWarningMessageTextOnly | ErrorWarningMessageWithPath;
+export type ErrorWarningMessage =
+  | ErrorWarningMessageTextOnly
+  | ErrorWarningMessageWithPath;
 
 export interface OrdValidation {
   errors: Array<string>;
@@ -142,6 +149,10 @@ export interface BaseReaction {
   data: AppReaction;
   previews: PreviewsById;
   summary: ReactionSummary;
+  // Snapshot of `data` taken before an optimistic field edit, used to roll the edit back if the
+  // backend rejects it (e.g. the user's role was changed to viewer, or the backend is down).
+  // Transient: present only while an edit is in flight, cleared on success or rollback. (#615)
+  dataBeforeEdit?: AppReaction;
 }
 
 export interface DatasetReaction extends BaseReaction {
@@ -155,13 +166,18 @@ export interface ReactionTemplate extends BaseReaction {
   id: string;
   name: string;
   variables: Record<string, Variable>;
+  modified_at: string;
 }
 
 export type ReactionOrTemplate = DatasetReaction | ReactionTemplate;
 
 export type ReactionId = number | string;
 
-export type UpdateReactionSuccessPayload = Omit<DatasetReaction, 'data'>;
+// The server response never includes the client-only `dataBeforeEdit` snapshot. (#615)
+export type UpdateReactionSuccessPayload = Omit<
+  DatasetReaction,
+  'data' | 'dataBeforeEdit'
+>;
 
 export interface ImportReactionFromFilePayload {
   file: File;

@@ -21,7 +21,10 @@ import { reactionContext } from 'features/reactions/reactions.context.ts';
 import { VariableType } from 'store/entities/templates/templates.types.ts';
 import { ReactionValueLabelWrapper } from 'features/reactions/ReactionValueLabelWrapper.tsx';
 
-export function MeasurementMasses({ name, formMethods }: Readonly<ReactionFormCustomProps>) {
+export function MeasurementMasses({
+  name,
+  formMethods,
+}: Readonly<ReactionFormCustomProps>) {
   const { isViewOnly } = useContext(reactionContext);
   const [values, onChange] = useUncontrolled<Array<number>>({
     ...formMethods.getInputProps(name),
@@ -37,7 +40,7 @@ export function MeasurementMasses({ name, formMethods }: Readonly<ReactionFormCu
 
   const handleChange = (value: Array<string | number>) => {
     const numericValues = value
-      .map(item => (typeof item === 'string' ? parseFloat(item) : item))
+      .map(item => (typeof item === 'string' ? Number.parseFloat(item) : item))
       .filter(item => !isNaN(item));
     onChange(numericValues);
   };

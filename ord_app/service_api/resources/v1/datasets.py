@@ -21,8 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ord_app.service_api.domain.auth import dataset_authorization, group_authorization
 from ord_app.service_api.domain.datasets import DatasetUseCases, get_dataset_use_case
 from ord_app.service_api.domain.reactions import validate_dataset_reactions
+from ord_app.service_api.models import (
+    DatasetGroupAssociationModel,
+    DatasetModel,
+    GroupModel,
+)
 from ord_app.service_api.schemas.datasets import (
     DatasetCreateSchema,
+    DatasetDownloadFileFormats,
     DatasetEnumerateCreateSchema,
     DatasetEnumerateExtendSchema,
     DatasetResponseSchema,
@@ -30,11 +36,11 @@ from ord_app.service_api.schemas.datasets import (
     DatasetShareCreateSchema,
     DatasetShareSchema,
     DatasetWithReactionCountResponseSchema,
-    DownloadFileFormats,
 )
 from ord_app.service_api.schemas.groups import GroupShareSchema
 from ord_app.service_api.services.exceptions import EntityNotFoundError
 from ord_app.service_api.services.pb_utils import (
+    MAP_FILE_EXT_TO_DATASET_KIND,
     validate_uploaded_pb_file,
 )
 from ord_app.service_api.services.postgresql import get_db_session
@@ -52,7 +58,7 @@ async def create_dataset(
     group_id: int,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
     payload: DatasetCreateSchema,
-):
+) -> DatasetModel:
     return await use_case.create(group_id, payload)
 
 
@@ -64,7 +70,7 @@ async def create_dataset(
 async def get_group_datasets(
     group_id: int,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> Page[DatasetModel]:
     result = await use_case.paginate_group_datasets(group_id)
     return result
 
@@ -79,9 +85,11 @@ async def upload_dataset(
     file: UploadFile,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    background_tasks: BackgroundTasks
-):
-    file_data, kind = await validate_uploaded_pb_file(file)
+    background_tasks: BackgroundTasks,
+) -> DatasetModel:
+    file_data, kind = await validate_uploaded_pb_file(
+        file, MAP_FILE_EXT_TO_DATASET_KIND
+    )
     dataset = await use_case.upload(group_id, file_data, kind)
     background_tasks.add_task(validate_dataset_reactions, db, dataset.id)
     return dataset
@@ -98,8 +106,8 @@ async def enumerate_dataset(
     payload: DatasetEnumerateCreateSchema,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    background_tasks: BackgroundTasks
-):
+    background_tasks: BackgroundTasks,
+) -> DatasetModel:
     dataset = await use_case.enumerate(group_id, payload)
     background_tasks.add_task(validate_dataset_reactions, db, dataset.id)
     return dataset
@@ -115,32 +123,37 @@ async def extend_enumerate_dataset(
     payload: DatasetEnumerateExtendSchema,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    background_tasks: BackgroundTasks
-):
+    background_tasks: BackgroundTasks,
+) -> None:
+    # 204 No Content: the extended dataset is computed for the background revalidation
+    # task but not returned in the response body.
     dataset = await use_case.extend_enumerate(dataset_id, payload)
     background_tasks.add_task(validate_dataset_reactions, db, dataset.id)
-    return dataset
 
 
 @router.get(
     "/datasets/{dataset_id}/download",
+    response_model=None,
     dependencies=[Depends(dataset_authorization(("admin", "editor", "viewer")))],
 )
 async def download_dataset(
     dataset_id: int,
-    file_format: DownloadFileFormats,
+    file_format: DatasetDownloadFileFormats,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> Response:
     dataset, data = await use_case.download(dataset_id, file_format)
     return Response(
         data,
-        headers={"Content-Disposition": f'attachment; filename="{dataset.name}.{file_format}"'}
+        headers={
+            "Content-Disposition": f'attachment; filename="{dataset.name}.{file_format}"'
+        },
     )
+
 
 @router.get("/datasets", response_model=Page[DatasetWithReactionCountResponseSchema])
 async def get_user_datasets(
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> Page[DatasetModel]:
     return await use_case.paginate_user_datasets()
 
 
@@ -153,15 +166,17 @@ async def update_dataset(
     dataset_id: int,
     payload: DatasetCreateSchema,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> DatasetModel:
     return await use_case.update(dataset_id, payload)
 
 
-@router.delete("/datasets/{dataset_id}", dependencies=[Depends(dataset_authorization(("admin",)))])
+@router.delete(
+    "/datasets/{dataset_id}", dependencies=[Depends(dataset_authorization(("admin",)))]
+)
 async def delete_dataset(
     dataset_id: int,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> str:
     # TODO: soft deletion needs to be implemented
     await use_case.delete(dataset_id)
     return "Object successfully deleted (or already absent)"
@@ -175,7 +190,7 @@ async def delete_dataset(
 async def get_dataset(
     dataset_id: int,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> DatasetModel:
     if dataset := await use_case.get(dataset_id):
         return dataset
     raise EntityNotFoundError("Dataset not found")
@@ -183,6 +198,7 @@ async def get_dataset(
 
 @router.post(
     "/datasets/{dataset_id}/extend",
+    response_model=None,
     dependencies=[Depends(dataset_authorization(("admin", "editor")))],
 )
 async def extend_dataset(
@@ -190,9 +206,11 @@ async def extend_dataset(
     file: UploadFile,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
-    background_tasks: BackgroundTasks
-):
-    file_data, kind = await validate_uploaded_pb_file(file)
+    background_tasks: BackgroundTasks,
+) -> DatasetModel | None:
+    file_data, kind = await validate_uploaded_pb_file(
+        file, MAP_FILE_EXT_TO_DATASET_KIND
+    )
     response = await use_case.extend(dataset_id, file_data, kind)
     background_tasks.add_task(validate_dataset_reactions, db)
     return response
@@ -206,7 +224,7 @@ async def extend_dataset(
 async def get_dataset_groups(
     dataset_id: int,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> list[GroupModel]:
     if groups := await use_case.get_dataset_groups(dataset_id):
         return groups
     raise EntityNotFoundError("Dataset not found")
@@ -215,26 +233,26 @@ async def get_dataset_groups(
 @router.post(
     "/groups/{group_id}/datasets/{dataset_id}/share",
     dependencies=[Depends(group_authorization(("admin",)))],
-    response_model=DatasetShareSchema
+    response_model=DatasetShareSchema,
 )
 async def share_dataset(
     group_id: int,
     dataset_id: int,
     payload: DatasetShareCreateSchema,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> DatasetGroupAssociationModel:
     return await use_case.share(group_id, dataset_id, payload)
 
 
 @router.post(
     "/groups/{group_id}/datasets/{dataset_id}/unshare",
     dependencies=[Depends(group_authorization(("admin",)))],
-    status_code=status.HTTP_204_NO_CONTENT
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def unshare_dataset(
     group_id: int,
     dataset_id: int,
     payload: DatasetShareCreateSchema,
     use_case: Annotated[DatasetUseCases, Depends(get_dataset_use_case)],
-):
+) -> None:
     await use_case.unshare(group_id, dataset_id, payload)

@@ -23,6 +23,14 @@ COPY ui/ ./
 # Install dependencies
 RUN npm ci --ignore-scripts
 
+# The backend is served from the same origin (nginx proxies /api to uvicorn), so
+# default the API base to a relative path. This keeps every deployed environment
+# (prod, staging, ...) calling its own origin instead of a hardcoded host, which
+# would otherwise be baked in from a local ui/.env at build time. A build-time env
+# var takes precedence over .env files in Vite. Override with --build-arg if needed.
+ARG VITE_API_ENDPOINT=/api/v1
+ENV VITE_API_ENDPOINT=${VITE_API_ENDPOINT}
+
 # Build the React app
 RUN npm run build
 
@@ -59,15 +67,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ntpsec-ntpdate && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install --no-cache-dir poetry
+# Install uv
+RUN pip install --no-cache-dir uv
 
-# Copy Poetry files
-COPY poetry.lock pyproject.toml ./
+ENV UV_PROJECT_ENVIRONMENT=/usr/local \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-# Install Python dependencies
-RUN poetry config virtualenvs.create false && \
-    poetry install --no-root --no-interaction --no-ansi
+# Copy project files
+COPY uv.lock pyproject.toml ./
+
+# Install Python dependencies (production only, no dev group)
+RUN uv sync --frozen --no-dev
 
 # Copy the rest of the FastAPI app
 COPY ord_app/ ./ord_app
@@ -92,5 +103,12 @@ RUN chmod +x ./entrypoint_single.sh
 
 # Expose both FastAPI and Nginx ports
 EXPOSE 8000 80
+
+# Record the source commit so the deployed image is traceable to a commit. The infra
+# build (ord-infrastructure) passes --build-arg GIT_COMMIT=$(git rev-parse HEAD) from
+# the checkout; defaults to "unknown" for local/manual builds. Declared last so only
+# this layer rebuilds per commit.
+ARG GIT_COMMIT=unknown
+LABEL org.opencontainers.image.revision=$GIT_COMMIT
 
 ENTRYPOINT ["sh", "./entrypoint_single.sh"]

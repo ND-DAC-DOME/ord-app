@@ -35,7 +35,10 @@ function replacer(_: unknown, value: any): any {
   } else return value;
 }
 
-export async function copyReactionPart(entityName: ReactionNodeEntity, reactionPart: object) {
+export async function copyReactionPart(
+  entityName: ReactionNodeEntity,
+  reactionPart: object,
+) {
   const value = reactionToOrdConvertersByNodeEntity[entityName](reactionPart);
   const clipboardMessage = JSON.stringify(
     {
@@ -60,17 +63,22 @@ export async function copyReactionPart(entityName: ReactionNodeEntity, reactionP
   }
 }
 
-const inputAliases = [ReactionNodeEntity.Inputs, ReactionNodeEntity.Input];
+const inputAliases = new Set([ReactionNodeEntity.Inputs, ReactionNodeEntity.Input]);
 
-function checkEntityNames(previousName: ReactionNodeEntity, currentName: ReactionNodeEntity): boolean {
+function checkEntityNames(
+  previousName: ReactionNodeEntity,
+  currentName: ReactionNodeEntity,
+): boolean {
   if (previousName === currentName) {
     return true;
   }
   // Input has two sidebars - with and without a name.
-  return inputAliases.includes(previousName) && inputAliases.includes(currentName);
+  return inputAliases.has(previousName) && inputAliases.has(currentName);
 }
 
-export async function pasteReactionPart(entityField: ReactionNodeEntity): Promise<[object | null, string]> {
+export async function pasteReactionPart(
+  entityField: ReactionNodeEntity,
+): Promise<[object | null, string]> {
   try {
     const text = await navigator.clipboard.readText();
     const message: ClipboardMessage = JSON.parse(text);
