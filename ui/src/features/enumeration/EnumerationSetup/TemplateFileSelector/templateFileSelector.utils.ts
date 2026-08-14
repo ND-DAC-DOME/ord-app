@@ -13,9 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const allowedSymbols = /[A-Za-z0-9]/;
 const defaultDelimiter = ';';
+const delimiterCandidates = new Set([',', ';', '\t', '|']);
 const lineBreaks = new Set(['\n', '\r']);
+
+export function normalizeCsvText(content: string): string {
+  return content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+}
 
 export function guessDelimiter(fileContent: string): string {
   let firstLineDelimiters = '';
@@ -25,8 +29,8 @@ export function guessDelimiter(fileContent: string): string {
     if (lineBreaks.has(char)) {
       break;
     }
-    if (!allowedSymbols.test(char)) {
-      firstLineDelimiters += fileContent.charAt(index);
+    if (delimiterCandidates.has(char)) {
+      firstLineDelimiters += char;
     }
     index++;
   }
