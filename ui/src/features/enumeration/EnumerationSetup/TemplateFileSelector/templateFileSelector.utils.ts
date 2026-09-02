@@ -23,13 +23,20 @@ export function normalizeCsvText(content: string): string {
 
 export function guessDelimiter(fileContent: string): string {
   let firstLineDelimiters = '';
+  let inQuotes = false;
   let index = 0;
   while (index < fileContent.length) {
     const char = fileContent.charAt(index);
     if (lineBreaks.has(char)) {
       break;
     }
-    if (delimiterCandidates.has(char)) {
+    if (char === '"') {
+      if (inQuotes && fileContent.charAt(index + 1) === '"') {
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (!inQuotes && delimiterCandidates.has(char)) {
       firstLineDelimiters += char;
     }
     index++;

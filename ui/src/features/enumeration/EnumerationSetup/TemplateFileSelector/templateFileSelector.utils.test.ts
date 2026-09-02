@@ -62,6 +62,12 @@ describe('guessDelimiter', () => {
     expect(guessDelimiter('"a","b"\n')).toBe(',');
   });
 
+  it('ignores supported delimiters inside quoted header fields', () => {
+    expect(guessDelimiter('"temperature; corrected",yield\n')).toBe(',');
+    expect(guessDelimiter('"a,b";c\n')).toBe(';');
+    expect(guessDelimiter('"say ""hi; there""",next\n')).toBe(',');
+  });
+
   it('falls back to ";" for space-only separated headers', () => {
     expect(guessDelimiter('col a col b\n')).toBe(';');
   });
