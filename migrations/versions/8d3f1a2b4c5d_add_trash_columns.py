@@ -51,6 +51,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index("uq_live_pb_reaction_id_dataset_id", table_name="reaction")
+    # Live rows may reuse a trashed pb_reaction_id. Unconditional uniqueness
+    # cannot be restored until trash rows are gone.
+    op.execute("DELETE FROM reaction WHERE deleted_at IS NOT NULL")
+    op.execute("DELETE FROM dataset WHERE deleted_at IS NOT NULL")
     op.create_unique_constraint(
         "uq_pb_reaction_id_dataset_id",
         "reaction",
