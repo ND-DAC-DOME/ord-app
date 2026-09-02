@@ -27,7 +27,7 @@ export function guessDelimiter(fileContent: string): string {
   let index = 0;
   while (index < fileContent.length) {
     const char = fileContent.charAt(index);
-    if (lineBreaks.has(char)) {
+    if (!inQuotes && lineBreaks.has(char)) {
       break;
     }
     if (char === '"') {
